@@ -8,9 +8,14 @@ var (
 	Config = InstallConfig{}
 )
 
+type Harvester struct {
+	Automatic     bool   `json:"automatic,omitempty"`
+	InstallMode   string `json:"installMode,omitempty"`
+	MgmtInterface string `json:"mgmtInterface,omitempty"`
+}
+
 type InstallConfig struct {
 	config.CloudConfig
 
-	ExtraK3sArgs []string
-	InstallMode  string
+	Harvester `json:"harvester,omitempty"`
 }

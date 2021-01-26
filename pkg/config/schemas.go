@@ -20,12 +20,13 @@ var (
 			}
 		}
 		return s
-	}).MustImport(config.CloudConfig{})
-	schema = schemas.Schema("cloudConfig")
+	}).MustImport(InstallConfig{})
+	schema = schemas.Schema("installConfig")
 )
 
-func ToCloudConfig(yamlBytes []byte) (*config.CloudConfig, error) {
-	result := &config.CloudConfig{}
+func ToInstallConfig(yamlBytes []byte) (*InstallConfig, error) {
+	result := &InstallConfig{}
+	result.CloudConfig.K3OS = config.K3OS{Install: &config.Install{}}
 	data := map[string]interface{}{}
 	if err := yaml.Unmarshal(yamlBytes, &data); err != nil {
 		return result, fmt.Errorf("failed to unmarshal yaml: %v", err)

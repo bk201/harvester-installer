@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"fmt"
 	"io/ioutil"
+	"net"
 	"net/http"
 	"os"
 	"os/exec"
@@ -18,12 +19,14 @@ import (
 	"github.com/pkg/errors"
 	cfg "github.com/rancher/harvester-installer/pkg/config"
 	"github.com/rancher/k3os/pkg/config"
+	"github.com/sirupsen/logrus"
 	"golang.org/x/crypto/ssh"
 	"k8s.io/apimachinery/pkg/util/rand"
 )
 
 const (
 	defaultHTTPTimeout = 15 * time.Second
+	automaticCmdline   = "harvester.automatic"
 )
 
 func getURL(url string, timeout time.Duration) ([]byte, error) {
@@ -125,13 +128,17 @@ func customizeConfig() {
 	cfg.Config.K3OS.NTPServers = []string{"ntp.ubuntu.com"}
 	cfg.Config.K3OS.Modules = []string{"kvm", "vhost_net"}
 	cfg.Config.Hostname = "harvester-" + rand.String(5)
-
 	cfg.Config.K3OS.Labels = map[string]string{
 		"harvester.cattle.io/managed": "true",
 	}
 
+	var extraK3sArgs []string
+	if cfg.Config.MgmtInterface != "" {
+		extraK3sArgs = []string{"--flannel-iface", cfg.Config.MgmtInterface}
+	}
+
 	if cfg.Config.InstallMode == modeJoin {
-		cfg.Config.K3OS.K3sArgs = append([]string{"agent"}, cfg.Config.ExtraK3sArgs...)
+		cfg.Config.K3OS.K3sArgs = append([]string{"agent"}, extraK3sArgs...)
 		return
 	}
 
@@ -159,7 +166,7 @@ func customizeConfig() {
 		"--cluster-init",
 		"--disable",
 		"local-storage",
-	}, cfg.Config.ExtraK3sArgs...)
+	}, extraK3sArgs...)
 }
 
 func doInstall(g *gocui.Gui) error {
@@ -252,7 +259,11 @@ func getRemoteCloudConfig(configURL string) (*config.CloudConfig, error) {
 	if err != nil {
 		return nil, err
 	}
-	return cfg.ToCloudConfig(b)
+	harvestCfg, err := cfg.ToInstallConfig(b)
+	if err != nil {
+		return nil, err
+	}
+	return &harvestCfg.CloudConfig, nil
 }
 
 func getHarvesterManifestContent(values map[string]string) string {
@@ -277,4 +288,43 @@ spec:
 		buffer.WriteString(fmt.Sprintf("    %s: %q\n", k, v))
 	}
 	return buffer.String()
+}
+
+func validateAutomaticInstall(config *cfg.InstallConfig) error {
+	logrus.Infof("Validating config: %+v K3OS.Install: %+v", config, config.K3OS.Install)
+	if err := validateInstallMode(config.InstallMode); err != nil {
+		return err
+	}
+
+	if err := validateMgmtInterface(config.MgmtInterface); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func validateInstallMode(mode string) error {
+	if mode != modeCreate && mode != modeJoin {
+		return errors.Errorf("InstallMode must be %q or %q", modeCreate, modeJoin)
+	}
+	return nil
+}
+
+func validateMgmtInterface(name string) error {
+	if name == "" {
+		return errors.New("no management interface specified")
+	}
+	ifaces, err := net.Interfaces()
+	if err != nil {
+		return err
+	}
+	for _, i := range ifaces {
+		if i.Name == name {
+			if i.Flags&net.FlagLoopback != 0 {
+				return errors.Errorf("interface %q is a loopback interface", name)
+			}
+			return nil
+		}
+	}
+	return errors.Errorf("interface %q is not found.", name)
 }

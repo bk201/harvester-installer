@@ -3,6 +3,7 @@ package console
 import (
 	"fmt"
 	"net"
+	"os"
 	"os/exec"
 	"strings"
 	"sync"
@@ -23,12 +24,29 @@ func (c *Console) layoutInstall(g *gocui.Gui) error {
 	var err error
 	once.Do(func() {
 		setPanels(c)
+		initPanel := askCreatePanel
+
+		if iCfg, err := cfg.ReadConfig(); err == nil {
+			if iCfg.Automatic {
+				// Validate Harvester-only configs and fail early
+				// CloudConfig values are verified in install.sh
+				if err := validateAutomaticInstall(&iCfg); err != nil {
+					fmt.Fprintf(os.Stderr, "invalid config value: %s", err)
+					return
+				}
+				cfg.Config = iCfg
+				logrus.Info("Start automatic installation...")
+				customizeConfig()
+				initPanel = installPanel
+			}
+		}
+
 		initElements := []string{
 			titlePanel,
 			validatorPanel,
 			notePanel,
 			footerPanel,
-			askCreatePanel,
+			initPanel,
 		}
 		var e widgets.Element
 		for _, name := range initElements {
@@ -451,7 +469,7 @@ func addNetworkPanel(c *Console) error {
 				return err
 			}
 			if iface != "" {
-				cfg.Config.ExtraK3sArgs = append(cfg.Config.ExtraK3sArgs, "--flannel-iface", iface)
+				cfg.Config.MgmtInterface = iface
 			}
 			networkV.Close()
 			return showNext(c, proxyPanel)

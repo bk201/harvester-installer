@@ -120,6 +120,7 @@ k3os:
 						"key1=value1:NoSchedule",
 						"key1=value1:NoExecute",
 					},
+					Install: &config.Install{},
 				},
 			},
 			err: nil,
@@ -127,8 +128,8 @@ k3os:
 	}
 
 	for _, testCase := range testCases {
-		output, err := ToCloudConfig(testCase.input)
-		assert.Equal(t, testCase.expected, output)
+		output, err := ToInstallConfig(testCase.input)
+		assert.Equal(t, testCase.expected, &output.CloudConfig)
 		assert.Equal(t, testCase.err, err)
 	}
 }
