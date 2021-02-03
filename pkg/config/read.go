@@ -6,23 +6,37 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/rancher/k3os/pkg/config"
 	"github.com/rancher/mapper/convert"
 	"github.com/rancher/mapper/values"
 )
 
-// ReadConfig reads Harvester config from various sources
-func ReadConfig() (InstallConfig, error) {
-	result := InstallConfig{}
-	result.CloudConfig.K3OS = config.K3OS{Install: &config.Install{}}
+const (
+	cmdLinePrefix = "harvester"
+)
+
+// ReadConfig constructs a config by reading various sources
+func ReadConfig() (HarvesterConfig, error) {
+	result := NewHarvesterConfig()
 	data, err := readCmdline()
 	if err != nil {
-		return result, err
+		return *result, err
 	}
 	schema.Mapper.ToInternal(data)
-	return result, convert.ToObj(data, &result)
+	return *result, convert.ToObj(data, result)
 }
 
+func ReadConfigURL() string {
+	params, err := readCmdline()
+	if err != nil {
+		return ""
+	}
+	if url, ok := params["config_url"]; ok {
+		return convert.ToString(url)
+	}
+	return ""
+}
+
+// read kernel command arguments that have `harvester.` prefix
 func readCmdline() (map[string]interface{}, error) {
 	//supporting regex https://regexr.com/4mq0s
 	parser, err := regexp.Compile(`(\"[^\"]+\")|([^\s]+=(\"[^\"]+\")|([^\s]+))`)
@@ -30,7 +44,8 @@ func readCmdline() (map[string]interface{}, error) {
 		return nil, nil
 	}
 
-	bytes, err := ioutil.ReadFile("/proc/cmdline")
+	// bytes, err := ioutil.ReadFile("/proc/cmdline")
+	bytes, err := ioutil.ReadFile("/tmp/cmdline")
 	if os.IsNotExist(err) {
 		return nil, nil
 	} else if err != nil {
@@ -45,6 +60,10 @@ func readCmdline() (map[string]interface{}, error) {
 			value = strings.Trim(parts[1], `"`)
 		}
 		keys := strings.Split(strings.Trim(parts[0], `"`), ".")
+		if !strings.HasPrefix(keys[0], cmdLinePrefix) {
+			continue
+		}
+		keys = keys[1:]
 		existing, ok := values.GetValue(data, keys...)
 		if ok {
 			switch v := existing.(type) {

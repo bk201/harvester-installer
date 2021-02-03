@@ -20,13 +20,12 @@ var (
 			}
 		}
 		return s
-	}).MustImport(InstallConfig{})
-	schema = schemas.Schema("installConfig")
+	}).MustImport(HarvesterConfig{})
+	schema = schemas.Schema("harvesterConfig")
 )
 
-func ToInstallConfig(yamlBytes []byte) (*InstallConfig, error) {
-	result := &InstallConfig{}
-	result.CloudConfig.K3OS = config.K3OS{Install: &config.Install{}}
+func ToHarvesterConfig(yamlBytes []byte) (*HarvesterConfig, error) {
+	result := &HarvesterConfig{OS: OS{Install: &Install{}}}
 	data := map[string]interface{}{}
 	if err := yaml.Unmarshal(yamlBytes, &data); err != nil {
 		return result, fmt.Errorf("failed to unmarshal yaml: %v", err)

@@ -2,21 +2,16 @@ package console
 
 import (
 	"fmt"
-	"io/ioutil"
 	"net"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
+	"github.com/rancher/harvester-installer/pkg/util"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestGetSSHKeysFromURL(t *testing.T) {
-	keys, err := ioutil.ReadFile("testdata/keys")
-	if err != nil {
-		t.Fatalf("Fail to load fixture")
-	}
-
 	testCases := []struct {
 		name         string
 		httpResp     string
@@ -25,7 +20,7 @@ func TestGetSSHKeysFromURL(t *testing.T) {
 	}{
 		{
 			name:         "Two public keys",
-			httpResp:     string(keys),
+			httpResp:     string(util.LoadFixture(t, "keys")),
 			pubKeysCount: 2,
 		},
 		{
