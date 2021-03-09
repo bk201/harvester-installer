@@ -1,4 +1,4 @@
-package util
+package config
 
 import (
 	"bytes"
@@ -9,12 +9,12 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
-	"github.com/rancher/harvester-installer/pkg/config"
+	"github.com/rancher/harvester-installer/pkg/util"
 	"github.com/sirupsen/logrus"
 )
 
 type ParsedWebhook struct {
-	config.Webhook
+	Webhook
 	RenderedURL     string
 	RenderedPayload string
 }
@@ -31,7 +31,7 @@ func IsValidEvent(event string) bool {
 		EventInstallStarted,
 		EventInstallCompleted,
 	}
-	return StringSliceContains(events, event)
+	return util.StringSliceContains(events, event)
 }
 
 func IsValidHttpMethod(method string) bool {
@@ -46,7 +46,7 @@ func IsValidHttpMethod(method string) bool {
 		http.MethodOptions,
 		http.MethodTrace,
 	}
-	return StringSliceContains(methods, method)
+	return util.StringSliceContains(methods, method)
 }
 
 func parseMethod(method string) (string, error) {
@@ -85,26 +85,16 @@ func dupHeaders(h map[string][]string) map[string][]string {
 	}
 	m := make(map[string][]string)
 	for k, v := range h {
-		m[k] = DupStrings(v)
+		m[k] = util.DupStrings(v)
 	}
 	return m
 }
 
-func parseWebhook(h config.Webhook, context map[string]string) (*ParsedWebhook, error) {
+func parseWebhook(h Webhook, context map[string]string) (*ParsedWebhook, error) {
 	logrus.Debugf("Parsing webhook %+v", h)
-	// p := &ParsedWebhook{
-	// 	config.Webhook{
-	// 		Event:   h.Event,
-	// 		Method:  strings.ToUpper(h.Method),
-	// 		URL:     h.URL,
-	// 		Payload: h.Payload,
-	// 	},
-	// 	"",
-	// 	"",
-	// }
 
 	p := &ParsedWebhook{
-		Webhook: config.Webhook{
+		Webhook: Webhook{
 			Event:   h.Event,
 			Method:  strings.ToUpper(h.Method),
 			Headers: dupHeaders(h.Headers),
@@ -147,7 +137,7 @@ func parseWebhook(h config.Webhook, context map[string]string) (*ParsedWebhook, 
 	return p, nil
 }
 
-func ParseWebhooks(hooks []config.Webhook, context map[string]string) (ParsedWebhooks, error) {
+func ParseWebhooks(hooks []Webhook, context map[string]string) (ParsedWebhooks, error) {
 	var result ParsedWebhooks
 	for _, h := range hooks {
 		parsed, err := parseWebhook(h, context)

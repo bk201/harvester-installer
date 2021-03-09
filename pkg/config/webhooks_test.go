@@ -1,4 +1,4 @@
-package util
+package config
 
 import (
 	"io/ioutil"
@@ -6,14 +6,13 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/rancher/harvester-installer/pkg/config"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestParseWebhook(t *testing.T) {
 	tests := []struct {
 		name          string
-		unparsed      config.Webhook
+		unparsed      Webhook
 		context       map[string]string
 		parsedURL     string
 		parsedPayload string
@@ -21,7 +20,7 @@ func TestParseWebhook(t *testing.T) {
 	}{
 		{
 			name: "valid",
-			unparsed: config.Webhook{
+			unparsed: Webhook{
 				Event:  "COMPLETED",
 				Method: "get",
 				Headers: map[string][]string{
@@ -38,7 +37,7 @@ func TestParseWebhook(t *testing.T) {
 		},
 		{
 			name: "invalid event",
-			unparsed: config.Webhook{
+			unparsed: Webhook{
 				Event:  "XXX",
 				Method: "GET",
 				URL:    "http://somewhere.com",
@@ -47,7 +46,7 @@ func TestParseWebhook(t *testing.T) {
 		},
 		{
 			name: "invalid HTTP method",
-			unparsed: config.Webhook{
+			unparsed: Webhook{
 				Event:  "STARTED",
 				Method: "PUNCH",
 				URL:    "http://somewhere.com",
@@ -71,7 +70,7 @@ func TestParseWebhook(t *testing.T) {
 
 func TestParsedWebhook_Send(t *testing.T) {
 	type fields struct {
-		Webhook         config.Webhook
+		Webhook         Webhook
 		RenderedURL     string
 		RenderedPayload string
 	}
@@ -90,14 +89,14 @@ func TestParsedWebhook_Send(t *testing.T) {
 		{
 			name: "get a url",
 			fields: fields{
-				Webhook: config.Webhook{Method: "GET"},
+				Webhook: Webhook{Method: "GET"},
 			},
 			wantMethod: "GET",
 		},
 		{
 			name: "put a body",
 			fields: fields{
-				Webhook:         config.Webhook{Method: "PUT"},
+				Webhook:         Webhook{Method: "PUT"},
 				RenderedPayload: "data",
 			},
 			wantMethod: "PUT",
