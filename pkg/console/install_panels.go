@@ -679,13 +679,6 @@ func addConfirmPanel(c *Console) error {
 	return nil
 }
 
-func getWebhookContext(cfg *config.HarvesterConfig) map[string]string {
-	m := map[string]string{
-		"Hostname": cfg.Hostname,
-	}
-	return m
-}
-
 func addInstallPanel(c *Console) error {
 	maxX, maxY := c.Gui.Size()
 	installV := widgets.NewPanel(c.Gui, installPanel)
@@ -718,9 +711,7 @@ func addInstallPanel(c *Console) error {
 			if err != nil {
 				printToInstallPanel(c.Gui, fmt.Sprintf("invalid webhooks: %s", err))
 			}
-			webhooks.Handle(EventInstallStarted)
-			doInstall(c.Gui, toCloudConfig(c.config))
-			webhooks.Handle(EventInstallCompleted)
+			doInstall(c.Gui, toCloudConfig(c.config), webhooks)
 		}()
 		return c.setContentByName(footerPanel, "")
 	}

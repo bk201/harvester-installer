@@ -221,7 +221,38 @@ func toCloudConfig(cfg *config.HarvesterConfig) *k3os.CloudConfig {
 	return cloudConfig
 }
 
-func doInstall(g *gocui.Gui, cloudConfig *k3os.CloudConfig) error {
+func execute(g *gocui.Gui, env []string, cmdName string) error {
+	cmd := exec.Command(cmdName)
+	cmd.Env = env
+	logrus.Infof("env: %v", cmd.Env)
+	stderr, err := cmd.StderrPipe()
+	if err != nil {
+		return err
+	}
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return err
+	}
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+
+	scanner := bufio.NewScanner(stdout)
+	scanner.Split(bufio.ScanLines)
+	for scanner.Scan() {
+		printToInstallPanel(g, scanner.Text())
+	}
+	scanner = bufio.NewScanner(stderr)
+	scanner.Split(bufio.ScanLines)
+	for scanner.Scan() {
+		printToInstallPanel(g, scanner.Text())
+	}
+	return nil
+}
+
+func doInstall(g *gocui.Gui, cloudConfig *k3os.CloudConfig, webhooks RendererWebhooks) error {
+	webhooks.Handle(EventInstallStarted)
+
 	var (
 		err      error
 		tempFile *os.File
@@ -253,31 +284,15 @@ func doInstall(g *gocui.Gui, cloudConfig *k3os.CloudConfig) error {
 		}
 		defer os.Remove(tempFile.Name())
 	}
-	// cmd := exec.Command("/usr/libexec/k3os/install")
-	cmd := exec.Command("/root/install")
-	cmd.Env = append(os.Environ(), ev...)
-	logrus.Infof("env: %v", cmd.Env)
-	stderr, err := cmd.StderrPipe()
-	if err != nil {
-		return err
-	}
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		return err
-	}
-	if err := cmd.Start(); err != nil {
-		return err
-	}
 
-	scanner := bufio.NewScanner(stdout)
-	scanner.Split(bufio.ScanLines)
-	for scanner.Scan() {
-		printToInstallPanel(g, scanner.Text())
+	env := append(os.Environ(), ev...)
+	if err := execute(g, env, "/usr/libexec/k3os/install"); err != nil {
+		webhooks.Handle(EventInstallFailed)
+		return err
 	}
-	scanner = bufio.NewScanner(stderr)
-	scanner.Split(bufio.ScanLines)
-	for scanner.Scan() {
-		printToInstallPanel(g, scanner.Text())
+	webhooks.Handle(EventInstallSuceeded)
+	if err := execute(g, env, "/usr/libexec/k3os/shutdown"); err != nil {
+		return err
 	}
 	return nil
 }

@@ -23,18 +23,18 @@ func TestParseWebhook(t *testing.T) {
 		{
 			name: "valid",
 			unparsed: config.Webhook{
-				Event:  "COMPLETED",
+				Event:  "SUCCEEDED",
 				Method: "get",
 				Headers: map[string][]string{
 					"Content-Type": {"application/json; charset=UTF-8"},
 				},
-				URL:     "http://10.100.0.10/cblr/svc/op/nopxe/system/{{.Hostname}}",
+				URL:     "http://10.100.0.10/cblr/svc/op/nopxe/system/{{.Hostname}}/{{.Unknown}}",
 				Payload: `{"hostname": "{{.Hostname}}"}`,
 			},
 			context: map[string]string{
 				"Hostname": "node1",
 			},
-			parsedURL:     "http://10.100.0.10/cblr/svc/op/nopxe/system/node1",
+			parsedURL:     "http://10.100.0.10/cblr/svc/op/nopxe/system/node1/",
 			parsedPayload: `{"hostname": "node1"}`,
 		},
 		{

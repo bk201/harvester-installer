@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"strings"
 	"text/template"
@@ -19,24 +20,26 @@ type RenderedWebhook struct {
 	config.Webhook
 	RenderedURL     string
 	RenderedPayload string
+	Valid           bool
 }
 
 type RendererWebhooks []RenderedWebhook
 
 const (
-	EventInstallStarted   = "STARTED"
-	EventInstallCompleted = "COMPLETED"
+	EventInstallStarted  = "STARTED"
+	EventInstallSuceeded = "SUCCEEDED"
+	EventInstallFailed   = "FAILED"
 )
 
 func IsValidEvent(event string) bool {
 	events := []string{
 		EventInstallStarted,
-		EventInstallCompleted,
+		EventInstallSuceeded,
 	}
 	return util.StringSliceContains(events, event)
 }
 
-func IsValidHttpMethod(method string) bool {
+func IsValidHTTPMethod(method string) bool {
 	methods := []string{
 		http.MethodGet,
 		http.MethodHead,
@@ -52,7 +55,7 @@ func IsValidHttpMethod(method string) bool {
 }
 
 func (p *RenderedWebhook) Handle() error {
-	logrus.Debugf("Handle webhook: %+v", p)
+	logrus.Debugf("handle webhook: %+v", p)
 	c := http.Client{
 		Timeout: defaultHTTPTimeout,
 	}
@@ -108,8 +111,6 @@ func dupHeaders(h map[string][]string) map[string][]string {
 }
 
 func prepareWebhook(h config.Webhook, context map[string]string) (*RenderedWebhook, error) {
-	logrus.Debugf("Preparing webhook %+v", h)
-
 	p := &RenderedWebhook{
 		Webhook: config.Webhook{
 			Event:    h.Event,
@@ -128,13 +129,14 @@ func prepareWebhook(h config.Webhook, context map[string]string) (*RenderedWebho
 	if !IsValidEvent(p.Webhook.Event) {
 		return nil, errors.Errorf("unknown install event: %s", p.Webhook.Event)
 	}
-	if !IsValidHttpMethod(p.Webhook.Method) {
+	if !IsValidHTTPMethod(p.Webhook.Method) {
 		return nil, errors.Errorf("unknown HTTP method: %s", p.Webhook.Method)
 	}
 
 	// render URL
+	tmplOption := "missingkey=zero"
 	bs := bytes.NewBufferString("")
-	tmpl, err := template.New("URL").Parse(p.Webhook.URL)
+	tmpl, err := template.New("URL").Option(tmplOption).Parse(p.Webhook.URL)
 	if err != nil {
 		return nil, err
 	}
@@ -146,7 +148,7 @@ func prepareWebhook(h config.Webhook, context map[string]string) (*RenderedWebho
 
 	// render payload
 	bs.Reset()
-	tmpl, err = template.New("Payload").Parse(p.Webhook.Payload)
+	tmpl, err = template.New("Payload").Option(tmplOption).Parse(p.Webhook.Payload)
 	if err != nil {
 		return nil, err
 	}
@@ -162,17 +164,21 @@ func prepareWebhook(h config.Webhook, context map[string]string) (*RenderedWebho
 func PrepareWebhooks(hooks []config.Webhook, context map[string]string) (RendererWebhooks, error) {
 	var result RendererWebhooks
 	for _, h := range hooks {
+		logrus.Debugf("preparing webhook %+v", h)
 		p, err := prepareWebhook(h, context)
 		if err != nil {
-			return nil, err
+			logrus.Errorf("fail to prepare webhook %+v: %s", h, err)
+			continue
 		}
+		p.Valid = true
+		logrus.Debugf("rendered webhook %+v", *p)
 		result = append(result, *p)
 	}
 	return result, nil
 }
 
 func (hooks RendererWebhooks) Handle(event string) error {
-	logrus.Infof("Handle webhooks for event %s", event)
+	logrus.Infof("handle webhooks for event %s", event)
 	for _, h := range hooks {
 		if event != h.Webhook.Event {
 			continue
@@ -183,4 +189,49 @@ func (hooks RendererWebhooks) Handle(event string) error {
 		}
 	}
 	return nil
+}
+
+func getIPAddr(iface *net.Interface, v6 bool) string {
+	addrs, err := iface.Addrs()
+	if err == nil {
+		for _, addr := range addrs {
+			logrus.Info(addr)
+			var ip net.IP
+			switch t := addr.(type) {
+			case *net.IPNet:
+				ip = t.IP
+			case *net.IPAddr:
+				ip = t.IP
+			}
+
+			// looks like IPv4 address is represented as IPv6 by default
+			if ip != nil && len(ip) == net.IPv6len {
+				r := ip.To4()
+				if r != nil && !v6 {
+					return r.String()
+				}
+				if r == nil && v6 {
+					return ip.String()
+				}
+			}
+		}
+	}
+	return ""
+}
+
+func getWebhookContext(cfg *config.HarvesterConfig) map[string]string {
+	// Hostname
+	m := map[string]string{
+		"Hostname": cfg.Hostname,
+	}
+
+	logrus.Info("KKKKKKKKKKKKKKKKKKKKKK")
+	// MAC address and IP addresses
+	if iface, err := net.InterfaceByName(cfg.Install.MgmtInterface); err == nil {
+		m["MACAddr"] = iface.HardwareAddr.String()
+		m["IPAddrV4"] = getIPAddr(iface, false)
+		m["IPAddrV6"] = getIPAddr(iface, true)
+	}
+	logrus.Debugf("webhook context %+v", m)
+	return m
 }
