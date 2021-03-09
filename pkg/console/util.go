@@ -17,6 +17,7 @@ import (
 	"github.com/jroimartin/gocui"
 	"github.com/pkg/errors"
 	"github.com/rancher/harvester-installer/pkg/config"
+	"github.com/rancher/harvester-installer/pkg/util"
 	k3os "github.com/rancher/k3os/pkg/config"
 	"github.com/sirupsen/logrus"
 	"golang.org/x/crypto/ssh"
@@ -146,12 +147,12 @@ func toCloudConfig(cfg *config.HarvesterConfig) *k3os.CloudConfig {
 	cloudConfig.K3OS.Token = cfg.Token
 
 	// cfg.OS
-	cloudConfig.SSHAuthorizedKeys = dupStrings(cfg.OS.SSHAuthorizedKeys)
+	cloudConfig.SSHAuthorizedKeys = util.DupStrings(cfg.OS.SSHAuthorizedKeys)
 	cloudConfig.Hostname = cfg.OS.Hostname
-	cloudConfig.K3OS.Modules = dupStrings(cfg.OS.Modules)
-	cloudConfig.K3OS.Sysctls = dupStringMap(cfg.OS.Sysctls)
-	cloudConfig.K3OS.NTPServers = dupStrings(cfg.OS.NTPServers)
-	cloudConfig.K3OS.DNSNameservers = dupStrings(cfg.OS.DNSNameservers)
+	cloudConfig.K3OS.Modules = util.DupStrings(cfg.OS.Modules)
+	cloudConfig.K3OS.Sysctls = util.DupStringMap(cfg.OS.Sysctls)
+	cloudConfig.K3OS.NTPServers = util.DupStrings(cfg.OS.NTPServers)
+	cloudConfig.K3OS.DNSNameservers = util.DupStrings(cfg.OS.DNSNameservers)
 	if cfg.OS.Wifi != nil {
 		cloudConfig.K3OS.Wifi = make([]k3os.Wifi, len(cfg.Wifi))
 		for i, w := range cfg.Wifi {
@@ -160,7 +161,7 @@ func toCloudConfig(cfg *config.HarvesterConfig) *k3os.CloudConfig {
 		}
 	}
 	cloudConfig.K3OS.Password = cfg.OS.Password
-	cloudConfig.K3OS.Environment = dupStringMap(cfg.OS.Environment)
+	cloudConfig.K3OS.Environment = util.DupStringMap(cfg.OS.Environment)
 
 	// cfg.OS.Install
 	cloudConfig.K3OS.Install.ForceEFI = cfg.Install.ForceEFI
@@ -252,7 +253,8 @@ func doInstall(g *gocui.Gui, cloudConfig *k3os.CloudConfig) error {
 		}
 		defer os.Remove(tempFile.Name())
 	}
-	cmd := exec.Command("/usr/libexec/k3os/install")
+	// cmd := exec.Command("/usr/libexec/k3os/install")
+	cmd := exec.Command("/root/install")
 	cmd.Env = append(os.Environ(), ev...)
 	logrus.Infof("env: %v", cmd.Env)
 	stderr, err := cmd.StderrPipe()
@@ -325,7 +327,7 @@ metadata:
   name: harvester
   namespace: kube-system
 spec:
-  chart: https://%{KUBERNETES_API}%/static/charts/harvester-0.1.0.tgz
+  chart: https://%{KUBERNETES_API}%/static/charts/harvester-dev.tgz
   targetNamespace: harvester-system
   set:
 `
@@ -335,24 +337,4 @@ spec:
 		buffer.WriteString(fmt.Sprintf("    %s: %q\n", k, v))
 	}
 	return buffer.String()
-}
-
-func dupStrings(src []string) []string {
-	if src == nil {
-		return nil
-	}
-	s := make([]string, len(src))
-	copy(s, src)
-	return s
-}
-
-func dupStringMap(src map[string]string) map[string]string {
-	if src == nil {
-		return nil
-	}
-	m := make(map[string]string)
-	for k, v := range src {
-		m[k] = v
-	}
-	return m
 }

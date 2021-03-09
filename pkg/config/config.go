@@ -10,6 +10,14 @@ const (
 	SanitizeMask = "***"
 )
 
+type Webhook struct {
+	Event   string              `json:"event,omitempty"`
+	Method  string              `json:"method,omitempty"`
+	Headers map[string][]string `json:"headers,omitempty"`
+	URL     string              `json:"url,omitempty"`
+	Payload string              `json:"payload,omitempty"`
+}
+
 type Install struct {
 	Automatic     bool   `json:"automatic,omitempty"`
 	Mode          string `json:"mode,omitempty"`
@@ -24,6 +32,8 @@ type Install struct {
 	NoFormat  bool   `json:"noFormat,omitempty"`
 	Debug     bool   `json:"debug,omitempty"`
 	TTY       string `json:"tty,omitempty"`
+
+	Webhooks []Webhook `json:"webhooks,omitempty"`
 }
 
 type Wifi struct {
