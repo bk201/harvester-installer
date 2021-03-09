@@ -1,18 +1,20 @@
-package config
+package console
 
 import (
+	"fmt"
 	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
+	"github.com/rancher/harvester-installer/pkg/config"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestParseWebhook(t *testing.T) {
 	tests := []struct {
 		name          string
-		unparsed      Webhook
+		unparsed      config.Webhook
 		context       map[string]string
 		parsedURL     string
 		parsedPayload string
@@ -20,11 +22,11 @@ func TestParseWebhook(t *testing.T) {
 	}{
 		{
 			name: "valid",
-			unparsed: Webhook{
+			unparsed: config.Webhook{
 				Event:  "COMPLETED",
 				Method: "get",
 				Headers: map[string][]string{
-					"Content-Type": {"application/json", "charset=utf-8"},
+					"Content-Type": {"application/json; charset=UTF-8"},
 				},
 				URL:     "http://10.100.0.10/cblr/svc/op/nopxe/system/{{.Hostname}}",
 				Payload: `{"hostname": "{{.Hostname}}"}`,
@@ -37,26 +39,26 @@ func TestParseWebhook(t *testing.T) {
 		},
 		{
 			name: "invalid event",
-			unparsed: Webhook{
+			unparsed: config.Webhook{
 				Event:  "XXX",
 				Method: "GET",
 				URL:    "http://somewhere.com",
 			},
-			errorString: "unknown install event: \"XXX\"",
+			errorString: "unknown install event: XXX",
 		},
 		{
 			name: "invalid HTTP method",
-			unparsed: Webhook{
+			unparsed: config.Webhook{
 				Event:  "STARTED",
 				Method: "PUNCH",
 				URL:    "http://somewhere.com",
 			},
-			errorString: "unknown HTTP method: \"PUNCH\"",
+			errorString: "unknown HTTP method: PUNCH",
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			p, err := parseWebhook(tt.unparsed, tt.context)
+			p, err := prepareWebhook(tt.unparsed, tt.context)
 			if tt.errorString != "" {
 				assert.EqualError(t, err, tt.errorString)
 			} else {
@@ -70,44 +72,87 @@ func TestParseWebhook(t *testing.T) {
 
 func TestParsedWebhook_Send(t *testing.T) {
 	type fields struct {
-		Webhook         Webhook
+		TLS             bool
+		Webhook         config.Webhook
 		RenderedURL     string
 		RenderedPayload string
 	}
 	type RequestRecorder struct {
 		Method  string
 		Body    string
+		Headers map[string][]string
 		Handled bool
 	}
 
 	tests := []struct {
-		name       string
-		fields     fields
-		wantMethod string
-		wantBody   string
+		name        string
+		fields      fields
+		wantMethod  string
+		wantHeaders map[string][]string
+		wantBody    string
 	}{
 		{
 			name: "get a url",
 			fields: fields{
-				Webhook: Webhook{Method: "GET"},
+				Webhook: config.Webhook{Method: "GET"},
 			},
 			wantMethod: "GET",
 		},
 		{
+			name: "get a url from a TLS server",
+			fields: fields{
+				TLS:     true,
+				Webhook: config.Webhook{Method: "GET", Insecure: true},
+			},
+			wantMethod: "GET",
+		},
+		{
+			name: "get a url with basic auth",
+			fields: fields{
+				Webhook: config.Webhook{
+					Method: "GET",
+					BasicAuth: config.HTTPBasicAuth{
+						User:     "aaa",
+						Password: "bbb",
+					},
+				},
+			},
+			wantMethod: "GET",
+			wantHeaders: map[string][]string{
+				"Authorization": {"Basic YWFhOmJiYg=="},
+			},
+		},
+		{
 			name: "put a body",
 			fields: fields{
-				Webhook:         Webhook{Method: "PUT"},
+				Webhook: config.Webhook{
+					Method: "PUT",
+					Headers: map[string][]string{
+						"Content-Type": {"application/json; charset=utf-8"},
+						"X-Yyy":        {"a", "b"},
+					},
+				},
 				RenderedPayload: "data",
 			},
 			wantMethod: "PUT",
-			wantBody:   "data",
+			wantHeaders: map[string][]string{
+				"Content-Type":   {"application/json; charset=utf-8"},
+				"Content-Length": {"4"},
+				"X-Yyy":          {"a", "b"},
+			},
+			wantBody: "data",
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			recorder := RequestRecorder{}
-			ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			newTestServer := httptest.NewServer
+			if tt.fields.TLS {
+				newTestServer = httptest.NewTLSServer
+			}
+			ts := newTestServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				recorder.Method = r.Method
+				recorder.Headers = dupHeaders(r.Header)
 				defer r.Body.Close()
 				body, err := ioutil.ReadAll(r.Body)
 				if err != nil {
@@ -115,18 +160,25 @@ func TestParsedWebhook_Send(t *testing.T) {
 				}
 				recorder.Body = string(body)
 				recorder.Handled = true
+				fmt.Println(recorder.Headers)
 			}))
 			defer ts.Close()
 
-			p := &ParsedWebhook{
+			p := &RenderedWebhook{
 				Webhook:         tt.fields.Webhook,
 				RenderedURL:     ts.URL,
 				RenderedPayload: tt.fields.RenderedPayload,
 			}
-			p.Send()
-			assert.Equal(t, tt.wantMethod, recorder.Method)
-			assert.Equal(t, tt.wantBody, recorder.Body)
+			p.Handle()
 			assert.Equal(t, true, recorder.Handled)
+			assert.Equal(t, tt.wantMethod, recorder.Method)
+			for k, vv := range tt.wantHeaders {
+				assert.Contains(t, recorder.Headers, k)
+				for _, v := range vv {
+					assert.Contains(t, recorder.Headers[k], v)
+				}
+			}
+			assert.Equal(t, tt.wantBody, recorder.Body)
 		})
 	}
 }

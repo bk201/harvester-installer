@@ -1,25 +1,27 @@
-package config
+package console
 
 import (
 	"bytes"
+	"crypto/tls"
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
 	"text/template"
-	"time"
 
 	"github.com/pkg/errors"
+	"github.com/rancher/harvester-installer/pkg/config"
 	"github.com/rancher/harvester-installer/pkg/util"
 	"github.com/sirupsen/logrus"
 )
 
-type ParsedWebhook struct {
-	Webhook
+type RenderedWebhook struct {
+	config.Webhook
 	RenderedURL     string
 	RenderedPayload string
 }
 
-type ParsedWebhooks []ParsedWebhook
+type RendererWebhooks []RenderedWebhook
 
 const (
 	EventInstallStarted   = "STARTED"
@@ -49,18 +51,19 @@ func IsValidHttpMethod(method string) bool {
 	return util.StringSliceContains(methods, method)
 }
 
-func parseMethod(method string) (string, error) {
-	if IsValidHttpMethod(method) {
-		return method, nil
-	}
-	return "", errors.Errorf("unknonw http method: %s", method)
-}
-
-func (p *ParsedWebhook) Send() error {
+func (p *RenderedWebhook) Handle() error {
+	logrus.Debugf("Handle webhook: %+v", p)
 	c := http.Client{
-		Timeout: 15 * time.Second,
+		Timeout: defaultHTTPTimeout,
 	}
-	logrus.Debugf("%s %s body: %s", p.Webhook.Method, p.RenderedURL, p.RenderedPayload)
+
+	if p.Webhook.Insecure {
+		c.Transport = &http.Transport{
+			TLSClientConfig: &tls.Config{
+				InsecureSkipVerify: true,
+			},
+		}
+	}
 
 	var body io.Reader
 	if p.RenderedPayload != "" {
@@ -72,9 +75,23 @@ func (p *ParsedWebhook) Send() error {
 		return err
 	}
 
-	_, err = c.Do(req)
+	if p.BasicAuth.User != "" && p.BasicAuth.Password != "" {
+		req.SetBasicAuth(p.BasicAuth.User, p.BasicAuth.Password)
+	}
+
+	for k, vv := range p.Webhook.Headers {
+		for _, v := range vv {
+			req.Header.Add(k, v)
+		}
+	}
+
+	resp, err := c.Do(req)
 	if err != nil {
 		return err
+	}
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 400 {
+		return fmt.Errorf("got %d status code from %s", resp.StatusCode, p.RenderedURL)
 	}
 	return nil
 }
@@ -90,24 +107,29 @@ func dupHeaders(h map[string][]string) map[string][]string {
 	return m
 }
 
-func parseWebhook(h Webhook, context map[string]string) (*ParsedWebhook, error) {
-	logrus.Debugf("Parsing webhook %+v", h)
+func prepareWebhook(h config.Webhook, context map[string]string) (*RenderedWebhook, error) {
+	logrus.Debugf("Preparing webhook %+v", h)
 
-	p := &ParsedWebhook{
-		Webhook: Webhook{
-			Event:   h.Event,
-			Method:  strings.ToUpper(h.Method),
-			Headers: dupHeaders(h.Headers),
-			URL:     h.URL,
-			Payload: h.Payload,
+	p := &RenderedWebhook{
+		Webhook: config.Webhook{
+			Event:    h.Event,
+			Method:   strings.ToUpper(h.Method),
+			Headers:  dupHeaders(h.Headers),
+			URL:      h.URL,
+			Payload:  h.Payload,
+			Insecure: h.Insecure,
+			BasicAuth: config.HTTPBasicAuth{
+				User:     h.BasicAuth.User,
+				Password: h.BasicAuth.Password,
+			},
 		},
 	}
 
 	if !IsValidEvent(p.Webhook.Event) {
-		return nil, errors.Errorf("unknown install event: %q", p.Webhook.Event)
+		return nil, errors.Errorf("unknown install event: %s", p.Webhook.Event)
 	}
 	if !IsValidHttpMethod(p.Webhook.Method) {
-		return nil, errors.Errorf("unknown HTTP method: %q", p.Webhook.Method)
+		return nil, errors.Errorf("unknown HTTP method: %s", p.Webhook.Method)
 	}
 
 	// render URL
@@ -137,26 +159,26 @@ func parseWebhook(h Webhook, context map[string]string) (*ParsedWebhook, error) 
 	return p, nil
 }
 
-func ParseWebhooks(hooks []Webhook, context map[string]string) (ParsedWebhooks, error) {
-	var result ParsedWebhooks
+func PrepareWebhooks(hooks []config.Webhook, context map[string]string) (RendererWebhooks, error) {
+	var result RendererWebhooks
 	for _, h := range hooks {
-		parsed, err := parseWebhook(h, context)
+		p, err := prepareWebhook(h, context)
 		if err != nil {
 			return nil, err
 		}
-		result = append(result, *parsed)
+		result = append(result, *p)
 	}
 	return result, nil
 }
 
-func (hooks ParsedWebhooks) Send(event string) error {
-	logrus.Infof("Handle webhooks for event %q", event)
+func (hooks RendererWebhooks) Handle(event string) error {
+	logrus.Infof("Handle webhooks for event %s", event)
 	for _, h := range hooks {
 		if event != h.Webhook.Event {
 			continue
 		}
-		if err := h.Send(); err != nil {
-			logrus.Errorf("fail to execute webhook: %s", err)
+		if err := h.Handle(); err != nil {
+			logrus.Errorf("fail to handle webhook: %s", err)
 			return err
 		}
 	}

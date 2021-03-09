@@ -714,13 +714,13 @@ func addInstallPanel(c *Console) error {
 				return
 			}
 
-			webhooks, err := config.ParseWebhooks(c.config.Webhooks, getWebhookContext(c.config))
+			webhooks, err := PrepareWebhooks(c.config.Webhooks, getWebhookContext(c.config))
 			if err != nil {
 				printToInstallPanel(c.Gui, fmt.Sprintf("invalid webhooks: %s", err))
 			}
-			webhooks.Send(config.EventInstallStarted)
+			webhooks.Handle(EventInstallStarted)
 			doInstall(c.Gui, toCloudConfig(c.config))
-			webhooks.Send(config.EventInstallCompleted)
+			webhooks.Handle(EventInstallCompleted)
 		}()
 		return c.setContentByName(footerPanel, "")
 	}
