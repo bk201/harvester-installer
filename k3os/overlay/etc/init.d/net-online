@@ -28,6 +28,11 @@ get_interfaces()
 	done
 }
 
+log_einfo()
+{
+	einfo "  $1" | tee -a /tmp/net-online.log
+}
+
 start ()
 {
 	local carriers configured dev gateway ifcount infinite
@@ -36,6 +41,7 @@ start ()
 	ebegin "Checking to see if the network is online"
 	rc=0
 	interfaces=${interfaces:-$(get_interfaces)}
+	log_einfo "interfaces: ${interfaces}"
 	timeout=${timeout:-120}
 	[ $timeout -eq 0 ] && infinite=true || infinite=false
 	while $infinite || [ $timeout -gt 0 ]; do
@@ -43,6 +49,7 @@ start ()
 		configured=0
 		ifcount=0
 		for dev in ${interfaces}; do
+			log_einfo "checking ${dev}"
 			[ -e /sys/class/net/$dev ] || continue
 			: $((ifcount += 1))
 			read carrier < /sys/class/net/$dev/carrier 2> /dev/null ||
@@ -51,8 +58,11 @@ start ()
 			read operstate < /sys/class/net/$dev/operstate 2> /dev/null ||
 				operstate=
 			[ "$operstate" = up ] && : $((configured += 1))
+			log_einfo "dev ${dev} (carrier: ${carrier}, operstate ${operstate}"
 		done
+		log_einfo "interface (ifcount ${ifcount}, configured: ${configured})"
 		[ $configured -ge ${minimum_up:-${ifcount}} ] && [ $carriers -ge 1 ] && break
+		log_einfo "waiting for interface (configured: ${configured}, timeout: ${timeout})"
 		sleep 1
 		: $((timeout -= 1))
 	done
@@ -65,9 +75,11 @@ start ()
 		ping_test_host="${ping_test_host:-google.com}"
 		if [ -n "$ping_test_host" ]; then
 			while $infinite || [ $timeout -gt 0 ]; do
-				ping -c 1 $ping_test_host > /dev/null 2>&1
+				log_einfo "ping $ping_test_host (timeout: $timeout)"
+				ping -c 1 $ping_test_host >> /tmp/net-online.log 2>&1
 				rc=$?
 				[ $rc -eq 0 ] && break
+				log_einfo "rc (${rc})"
 				: $((timeout -= 1))
 			done
 		fi
