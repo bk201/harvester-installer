@@ -33,6 +33,16 @@ helm repo index ${CHARTS_DIR}
 harvester_chart_version=$(yq e .version ${harvester_chart_path}/Chart.yaml --exit-status)
 sed -i "s/\$HARVESTER_CHART_VERSION/${harvester_chart_version}/" ${PACKAGE_HARVESTER_OS_DIR}/files/usr/share/rancher/rancherd/config.yaml.d/91-harvester-bootstrap.yaml
 
+WIP_API_IMAGE_REPO=bk201z/harvester
+WIP_API_IMAGE_TAG=c4a49dbe
+WIP_WEBHOOK_IMAGE_REPO=bk201z/harvester-webhook
+WIP_WEBHOOK_IMAGE_TAG=c4a49dbe
+# TODO(kiefer): Remove me if PR https://github.com/harvester/harvester/pull/1033 is merged.
+sed -i "s,\$HARVESTER_API_IMAGE_REPO,${WIP_API_IMAGE_REPO}," ${PACKAGE_HARVESTER_OS_DIR}/files/usr/share/rancher/rancherd/config.yaml.d/91-harvester-bootstrap.yaml
+sed -i "s,\$HARVESTER_API_IMAGE_TAG,${WIP_API_IMAGE_TAG}," ${PACKAGE_HARVESTER_OS_DIR}/files/usr/share/rancher/rancherd/config.yaml.d/91-harvester-bootstrap.yaml
+sed -i "s,\$HARVESTER_WEBHOOK_IMAGE_REPO,${WIP_WEBHOOK_IMAGE_REPO}," ${PACKAGE_HARVESTER_OS_DIR}/files/usr/share/rancher/rancherd/config.yaml.d/91-harvester-bootstrap.yaml
+sed -i "s,\$HARVESTER_WEBHOOK_IMAGE_TAG,${WIP_WEBHOOK_IMAGE_TAG}," ${PACKAGE_HARVESTER_OS_DIR}/files/usr/share/rancher/rancherd/config.yaml.d/91-harvester-bootstrap.yaml
+
 if [ -n "$HARVESTER_INSTALLER_OFFLINE_BUILD" -a -e /bundle ]; then
  cp -rf /bundle/* ${BUNDLE_DIR}/
  exit 0
@@ -51,18 +61,16 @@ zstd --rm ${RANCHERD_IMAGES_DIR}/rancherd-bootstrap-images.tar -o ${RANCHERD_IMA
 
 
 # Images needed during cluster-init stage.
-# ibuildthecloud/rancher:dev
 # ibuildthecloud/suc:latest
 xargs -n1 -t docker image pull --quiet << EOF > ${IMAGES_DIR}/rancherd-images.txt
-  ibuildthecloud/rancher-webhook:dev
-  bk201z/rancher:dev
+  bk201z/rancher:bfb72b6
   bk201z/suc:latest
   rancher/hardened-cni-plugins:v0.9.1-build20210414
   rancher/shell:v0.1.8
   rancher/rancher-webhook:v0.2.0-alpha02
   rancher/gitjob:v0.1.15
-  rancher/fleet:v0.3.6-rc4
-  rancher/fleet-agent:v0.3.6-rc4
+  rancher/fleet:v0.3.6-rc3
+  rancher/fleet-agent:v0.3.6-rc3
   rancher/system-upgrade-controller:v0.7.0
   rancher/system-upgrade-controller:v0.7.1
 EOF
@@ -73,10 +81,10 @@ zstd --rm ${IMAGES_DIR}/rancherd-images.tar -o ${IMAGES_DIR}/rancherd-images.tar
 # RKE2 images
 RKE2_VERSION="v1.21.2+rke2r1"
 RKE2_IMAGES_URL="https://github.com/rancher/rke2/releases/download/${RKE2_VERSION}"
-curl -sfL "${RKE2_IMAGES_URL}/rke2-images.linux-amd64.txt" -o "${IMAGES_DIR}/rke2-images.linux-amd64.txt"
-curl -sfL "${RKE2_IMAGES_URL}/rke2-images.linux-amd64.tar.zst" -o "${IMAGES_DIR}/rke2-images.linux-amd64.tar.zst"
-curl -sfL "${RKE2_IMAGES_URL}/rke2-images-multus.linux-amd64.tar.zst" -o "${IMAGES_DIR}/rke2-images-multus.linux-amd64.tar.zst"
-curl -sfL "${RKE2_IMAGES_URL}/rke2-images-multus.linux-amd64.txt" -o "${IMAGES_DIR}/rke2-images-multus.linux-amd64.txt"
+curl -fL "${RKE2_IMAGES_URL}/rke2-images.linux-amd64.txt" -o "${IMAGES_DIR}/rke2-images.linux-amd64.txt"
+curl -fL "${RKE2_IMAGES_URL}/rke2-images.linux-amd64.tar.zst" -o "${IMAGES_DIR}/rke2-images.linux-amd64.tar.zst"
+curl -fL "${RKE2_IMAGES_URL}/rke2-images-multus.linux-amd64.tar.zst" -o "${IMAGES_DIR}/rke2-images-multus.linux-amd64.tar.zst"
+curl -fL "${RKE2_IMAGES_URL}/rke2-images-multus.linux-amd64.txt" -o "${IMAGES_DIR}/rke2-images-multus.linux-amd64.txt"
 
 
 # Harvester images: get image list from harvester chart's values file
@@ -115,7 +123,6 @@ awk -F '/' '{if(NF==3){print $0} else if(NF==2){print "docker.io/"$0}else if(NF=
 sort -u "${image_list_file}.tmp" | \
 grep -Ev "local-path-provisioner|library-traefik|klipper-lb|multus" >"${image_list_file}"
 
-cat ${image_list_file}
 cp ${image_list_file} ${IMAGES_DIR}
 
 output_image_tar_file="${IMAGES_DIR}/harvester-images.tar"
@@ -129,3 +136,13 @@ if [ -z "${HARVESTER_INSTALLER_OFFLINE_BUILD}" ] && [ ! -f $output_image_tar_fil
   docker image save -o ${output_image_tar_file} $(<${IMAGES_DIR}/${image_list_file})
   zstd --rm ${output_image_tar_file} -o ${output_image_tar_file}.zst
 fi
+
+
+# TODO(kiefer): Remove me if PR https://github.com/harvester/harvester/pull/1033 is merged.
+# Images under development.
+xargs -n1 -t docker image pull --quiet << EOF > ${IMAGES_DIR}/wip-images.txt
+  $WIP_API_IMAGE_REPO:$WIP_API_IMAGE_TAG
+  $WIP_WEBHOOK_IMAGE_REPO:$WIP_WEBHOOK_IMAGE_TAG
+EOF
+docker image save -o ${IMAGES_DIR}/wip-images.tar $(<${IMAGES_DIR}/wip-images.txt)
+zstd --rm ${IMAGES_DIR}/wip-images.tar -o ${IMAGES_DIR}/wip-images.tar.zst
