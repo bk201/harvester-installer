@@ -6,6 +6,8 @@ RUN curl -sfL https://github.com/rancher/wharfie/releases/latest/download/wharfi
 COPY files/ /
 RUN chmod 0600 /system/oem/*
 
+RUN zypper ref && zypper install -y nginx
+
 COPY harvester-release.yaml /etc/
 
 ARG HARVESTER_PRETTY_NAME
