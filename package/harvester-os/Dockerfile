@@ -27,3 +27,5 @@ COPY files/ /
 RUN chmod 0600 /system/oem/*
 
 RUN mkinitrd
+
+RUN date > /etc/buildtime
