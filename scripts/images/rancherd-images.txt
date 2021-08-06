@@ -7,3 +7,4 @@ docker.io/rancher/gitjob:v0.1.15
 docker.io/rancher/fleet:v0.3.6-rc3
 docker.io/rancher/fleet-agent:v0.3.6-rc3
 docker.io/rancher/system-upgrade-controller:v0.7.0
+docker.io/rancher/kubectl:v1.18.0
