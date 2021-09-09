@@ -11,11 +11,9 @@ import (
 	"github.com/harvester/harvester-installer/pkg/config"
 )
 
-var (
-	ErrMsgModeCreateContainsServerURL   = fmt.Sprintf("ServerURL need to be empty in %s mode", config.ModeCreate)
-	ErrMsgModeJoinServerURLNotSpecified = fmt.Sprintf("ServerURL can't empty in %s mode", config.ModeJoin)
-	ErrMsgModeUnknown                   = "unknown mode"
-	ErrMsgTokenNotSpecified             = "token not specified"
+const (
+	ErrMsgModeUnknown       = "unknown mode"
+	ErrMsgTokenNotSpecified = "token not specified"
 
 	ErrMsgMgmtInterfaceNotSpecified = "no management interface specified"
 	ErrMsgInterfaceNotSpecified     = "no interface specified"
@@ -26,10 +24,22 @@ var (
 	ErrMsgNoCredentials             = "no SSH authorized keys or passwords are set"
 
 	ErrMsgNetworkMethodUnknown = "unknown network method"
+	ErrMsgVIPInvalidVIPAddr    = "invalid VIP address"
+	ErrMsgVIPInvalidVIpMode    = "invalid VIP mode"
+	ErrMsgVIPInvalidHWAddr     = "invalid VIP hardware address"
+)
+
+var (
+	ErrMsgModeCreateContainsServerURL   = fmt.Sprintf("ServerURL need to be empty in %s mode", config.ModeCreate)
+	ErrMsgModeJoinServerURLNotSpecified = fmt.Sprintf("ServerURL can't empty in %s mode", config.ModeJoin)
 )
 
 type ValidatorInterface interface {
-	Validate(cfg *config.HarvesterConfig) error
+	// CheckDevice check if a given device exists
+	CheckDevice(device string) error
+
+	// CheckInterface check if a given network interface exists
+	CheckInterface(name string) error
 }
 
 type ConfigValidator struct {
@@ -39,7 +49,7 @@ func prettyError(errMsg string, value string) error {
 	return errors.Errorf("%s: %s", errMsg, value)
 }
 
-func checkInterface(name string) error {
+func (v ConfigValidator) CheckInterface(name string) error {
 	if name == "" {
 		return errors.New(ErrMsgInterfaceNotSpecified)
 	}
@@ -58,7 +68,7 @@ func checkInterface(name string) error {
 	return prettyError(ErrMsgInterfaceNotFound, name)
 }
 
-func checkDevice(device string) error {
+func (v ConfigValidator) CheckDevice(device string) error {
 	if device == "" {
 		return errors.New(ErrMsgDeviceNotSpecified)
 	}
@@ -119,9 +129,9 @@ func checkIPList(ipList []string) error {
 	return nil
 }
 
-func checkNetworks(networks []config.Network) error {
+func checkNetworks(v ValidatorInterface, networks []config.Network) error {
 	for _, network := range networks {
-		if err := checkInterface(network.Interface); err != nil {
+		if err := v.CheckInterface(network.Interface); err != nil {
 			return err
 		}
 		switch networkMethod := network.Method; networkMethod {
@@ -162,44 +172,18 @@ func checkNetworks(networks []config.Network) error {
 
 func checkVip(vip, vipHwAddr, vipMode string) error {
 	if err := checkIP(vip); err != nil {
-		return err
+		return prettyError(ErrMsgVIPInvalidVIPAddr, vip)
 	}
 
 	switch vipMode {
 	case config.NetworkMethodDHCP:
 		if err := checkHwAddr(vipHwAddr); err != nil {
-			return err
+			return prettyError(ErrMsgVIPInvalidHWAddr, vipHwAddr)
 		}
 	case config.NetworkMethodStatic:
 		return nil
 	default:
-		return prettyError(ErrMsgNetworkMethodUnknown, vipMode)
-	}
-
-	return nil
-}
-
-func (v ConfigValidator) Validate(cfg *config.HarvesterConfig) error {
-	if cfg.Install.Mode == config.ModeCreate && cfg.Install.MgmtInterface == "" {
-		return errors.New(ErrMsgMgmtInterfaceNotSpecified)
-	}
-
-	if err := checkInterface(cfg.Install.MgmtInterface); err != nil {
-		return err
-	}
-
-	if err := checkDevice(cfg.Install.Device); err != nil {
-		return err
-	}
-
-	if err := checkNetworks(cfg.Install.Networks); err != nil {
-		return err
-	}
-
-	if cfg.Install.Mode == config.ModeCreate {
-		if err := checkVip(cfg.Vip, cfg.VipHwAddr, cfg.VipMode); err != nil {
-			return err
-		}
+		return prettyError(ErrMsgVIPInvalidVIpMode, vipMode)
 	}
 
 	return nil
@@ -237,5 +221,28 @@ func validateConfig(v ValidatorInterface, cfg *config.HarvesterConfig) error {
 	if err := commonCheck(cfg); err != nil {
 		return err
 	}
-	return v.Validate(cfg)
+
+	if cfg.Install.Mode == config.ModeCreate && cfg.Install.MgmtInterface == "" {
+		return errors.New(ErrMsgMgmtInterfaceNotSpecified)
+	}
+
+	if err := v.CheckInterface(cfg.Install.MgmtInterface); err != nil {
+		return err
+	}
+
+	if err := v.CheckDevice(cfg.Install.Device); err != nil {
+		return err
+	}
+
+	if err := checkNetworks(v, cfg.Install.Networks); err != nil {
+		return err
+	}
+
+	if cfg.Install.Mode == config.ModeCreate {
+		if err := checkVip(cfg.Vip, cfg.VipHwAddr, cfg.VipMode); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }

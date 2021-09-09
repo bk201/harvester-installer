@@ -11,10 +11,10 @@ import (
 )
 
 const (
-	cosLoginUser = "rancher"
+	cosLoginUser       = "rancher"
 	manifestsDirectory = "/var/lib/rancher/rke2/server/manifests/"
-	canalConfig = "rke2-canal-config.yaml"
-	harvesterConfig = "harvester-config.yaml"
+	canalConfig        = "rke2-canal-config.yaml"
+	harvesterConfig    = "harvester-config.yaml"
 )
 
 var (
@@ -115,7 +115,7 @@ func ConvertToCOS(config *HarvesterConfig) (*yipSchema.YipConfig, error) {
 				return nil, err
 			}
 			initramfs.Files = append(initramfs.Files, yipSchema.File{
-				Path:        manifestsDirectory+canalConfig,
+				Path:        manifestsDirectory + canalConfig,
 				Content:     canalHelmChartConfig,
 				Permissions: 0600,
 				Owner:       0,
@@ -129,11 +129,11 @@ func ConvertToCOS(config *HarvesterConfig) (*yipSchema.YipConfig, error) {
 				return nil, err
 			}
 			initramfs.Files = append(initramfs.Files, yipSchema.File{
-				Path: manifestsDirectory+harvesterConfig,
-				Content: harvesterHelmChartConfig,
+				Path:        manifestsDirectory + harvesterConfig,
+				Content:     harvesterHelmChartConfig,
 				Permissions: 0600,
-				Owner: 0,
-				Group: 0,
+				Owner:       0,
+				Group:       0,
 			})
 		}
 	}

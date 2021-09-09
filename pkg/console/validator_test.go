@@ -14,17 +14,7 @@ type FakeValidator struct {
 	hasDevices    []string
 }
 
-func (v FakeValidator) Validate(cfg *config.HarvesterConfig) error {
-	if err := v.checkMgmtInterface(cfg.Install.MgmtInterface); err != nil {
-		return err
-	}
-	if err := v.checkDevice(cfg.Install.Device); err != nil {
-		return err
-	}
-	return nil
-}
-
-func (v FakeValidator) checkMgmtInterface(name string) error {
+func (v FakeValidator) CheckInterface(name string) error {
 	for _, i := range v.hasInterfaces {
 		if i == name {
 			return nil
@@ -33,7 +23,7 @@ func (v FakeValidator) checkMgmtInterface(name string) error {
 	return prettyError(ErrMsgInterfaceNotFound, name)
 }
 
-func (v FakeValidator) checkDevice(device string) error {
+func (v FakeValidator) CheckDevice(device string) error {
 	for _, d := range v.hasDevices {
 		if d == device {
 			return nil
@@ -69,6 +59,15 @@ func TestValidateConfig(t *testing.T) {
 				Mode:          config.ModeCreate,
 				MgmtInterface: "eth0",
 				Device:        "/dev/vda",
+				Networks: []config.Network{
+					{
+						Interface: "eth0",
+						Method:    config.NetworkMethodDHCP,
+					},
+				},
+				Vip:       "192.168.0.100",
+				VipMode:   config.NetworkMethodDHCP,
+				VipHwAddr: "52:54:00:de:ad:aa",
 			},
 		}
 	}
@@ -136,12 +135,36 @@ func TestValidateConfig(t *testing.T) {
 			errMsg: ErrMsgDeviceNotFound,
 		},
 		{
-			name: "invalid create config: interface not found",
+			name: "invalid create config: mgmt interface not found",
 			cfg:  createCreateConfig(),
 			preApply: func(c *config.HarvesterConfig) {
 				c.MgmtInterface = "eth1"
 			},
 			errMsg: ErrMsgInterfaceNotFound,
+		},
+		{
+			name: "invalid create config: network interface not found",
+			cfg:  createCreateConfig(),
+			preApply: func(c *config.HarvesterConfig) {
+				c.Networks[0].Interface = "eth1"
+			},
+			errMsg: ErrMsgInterfaceNotFound,
+		},
+		{
+			name: "invalid create config: bad VIP",
+			cfg:  createCreateConfig(),
+			preApply: func(c *config.HarvesterConfig) {
+				c.Install.Vip = "x"
+			},
+			errMsg: ErrMsgVIPInvalidVIPAddr,
+		},
+		{
+			name: "invalid create config: VIP DHCP mode without hardware address",
+			cfg:  createCreateConfig(),
+			preApply: func(c *config.HarvesterConfig) {
+				c.Install.VipHwAddr = ""
+			},
+			errMsg: ErrMsgVIPInvalidHWAddr,
 		},
 	}
 

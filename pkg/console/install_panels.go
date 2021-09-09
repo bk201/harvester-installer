@@ -1214,6 +1214,7 @@ func addInstallPanel(c *Console) error {
 					return
 				}
 				logrus.Info("Remote config: ", remoteConfig)
+				remoteConfig.Normalize()
 				if err := mergo.Merge(c.config, remoteConfig, mergo.WithAppendSlice); err != nil {
 					printToPanel(c.Gui, fmt.Sprintf("fail to merge config: %s", err), installPanel)
 					return

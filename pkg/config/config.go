@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/imdario/mergo"
 )
@@ -97,6 +98,14 @@ func NewHarvesterConfig() *HarvesterConfig {
 	return &HarvesterConfig{}
 }
 
+func (c *HarvesterConfig) Normalize() {
+	c.VipMode = strings.ToLower(c.VipMode)
+
+	for i := range c.Install.Networks {
+		c.Install.Networks[i].Method = strings.ToLower(c.Install.Networks[i].Method)
+	}
+}
+
 func (c *HarvesterConfig) DeepCopy() (*HarvesterConfig, error) {
 	newConf := NewHarvesterConfig()
 	if err := mergo.Merge(newConf, c, mergo.WithAppendSlice); err != nil {
@@ -128,4 +137,11 @@ func (c *HarvesterConfig) String() string {
 		return err.Error()
 	}
 	return fmt.Sprintf("%+v", *s)
+}
+
+func (c *HarvesterConfig) VIPModeChartValue() string {
+	if c.VipMode == NetworkMethodDHCP {
+		return "DHCP"
+	}
+	return c.VipMode
 }
