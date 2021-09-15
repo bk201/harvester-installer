@@ -66,7 +66,7 @@ func getVipThroughDHCP(iface string) (*vipAddr, error) {
 	}
 
 	return &vipAddr{
-		hwAddr: l.Attrs().HardwareAddr.String(),
+		hwAddr:   l.Attrs().HardwareAddr.String(),
 		ipv4Addr: ip,
 	}, nil
 }

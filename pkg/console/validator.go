@@ -119,12 +119,14 @@ func checkIPList(ipList []string) error {
 	return nil
 }
 
-func checkNetworks(networks []config.Network) error {
+func checkNetworks(networks map[string]config.Network) error {
 	for _, network := range networks {
-		if err := checkInterface(network.Interface); err != nil {
-			return err
+		for _, iface := range network.Interfaces {
+			// TODO: check MAC
+			if err := checkInterface(iface.Name); err != nil {
+				return err
+			}
 		}
-
 		switch network.Method {
 		case config.NetworkMethodDHCP, "":
 			return nil
@@ -181,13 +183,14 @@ func checkVip(vip, vipHwAddr, vipMode string) error {
 }
 
 func (v ConfigValidator) Validate(cfg *config.HarvesterConfig) error {
-	if cfg.Install.Mode == config.ModeCreate && cfg.Install.MgmtInterface == "" {
-		return errors.New(ErrMsgMgmtInterfaceNotSpecified)
-	}
+	// TODO: check
+	// if cfg.Install.Mode == config.ModeCreate && cfg.Install.MgmtInterface == "" {
+	// 	return errors.New(ErrMsgMgmtInterfaceNotSpecified)
+	// }
 
-	if err := checkInterface(cfg.Install.MgmtInterface); err != nil {
-		return err
-	}
+	// if err := checkInterface(cfg.Install.MgmtInterface); err != nil {
+	// 	return err
+	// }
 
 	if err := checkDevice(cfg.Install.Device); err != nil {
 		return err

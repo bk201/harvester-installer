@@ -42,9 +42,9 @@ const (
 	networkMethodDHCPText   = "Automatic (DHCP)"
 	networkMethodStaticText = "Static"
 
-	vipTitle               = "Configure VIP"
-	vipLabel               = "VIP"
-	askVipMethodLabel      = "VIP Mode"
+	vipTitle          = "Configure VIP"
+	vipLabel          = "VIP"
+	askVipMethodLabel = "VIP Mode"
 
 	clusterTokenCreateNote = "Note: The token is used for adding nodes to the cluster"
 	clusterTokenJoinNote   = "Note: Input the token of the existing cluster"

@@ -632,7 +632,9 @@ func addNetworkPanel(c *Console) error {
 	}
 
 	setupNetwork := func() ([]byte, error) {
-		return applyNetworks([]config.Network{mgmtNetwork})
+		return applyNetworks(map[string]config.Network{
+			"management": mgmtNetwork,
+		})
 	}
 
 	preGotoNextPage := func() (string, error) {
@@ -642,8 +644,12 @@ func addNetworkPanel(c *Console) error {
 		}
 		logrus.Infof("Network configuration is applied: %s", output)
 
-		c.config.Networks = []config.Network{
-			mgmtNetwork,
+		// c.config.Networks =  []config.Network{
+		// 	mgmtNetwork,
+		// }
+		// mgmtNetwork.
+		c.config.Networks = map[string]config.Network{
+			"management": mgmtNetwork,
 		}
 		closeThisPage()
 		return "", nil
@@ -716,8 +722,11 @@ func addNetworkPanel(c *Console) error {
 		case NICStateLowerDown:
 			return c.setContentByName(networkValidatorPanel, fmt.Sprintf("NIC %s is down\nNetwork cable isn't plugged in", selected))
 		}
-		c.config.Install.MgmtInterface = selected
-		mgmtNetwork.Interface = selected
+		mgmtNetwork.Interfaces = []config.NetworkInterface{
+			{
+				Name: selected,
+			},
+		}
 		if mgmtNetwork.Method != config.NetworkMethodStatic {
 			return showNext(c, askNetworkMethodPanel)
 		}
@@ -737,7 +746,7 @@ func addNetworkPanel(c *Console) error {
 		if mgmtNetwork.Method == config.NetworkMethodStatic {
 			return "", nil
 		}
-		nic, err := net.InterfaceByName(mgmtNetwork.Interface)
+		nic, err := net.InterfaceByName(mgmtNetwork.Interfaces[0].Name)
 		if err != nil {
 			return "", err
 		}
@@ -1228,9 +1237,9 @@ func addInstallPanel(c *Console) error {
 			}
 
 			// case insensitive for network method and vip mode
-			for i, network := range c.config.Networks {
-				c.config.Networks[i].Method = strings.ToLower(network.Method)
-			}
+			// for i, network := range c.config.Networks {
+			// 	c.config.Networks[i].Method = strings.ToLower(network.Method)
+			// }
 			c.config.VipMode = strings.ToLower(c.config.VipMode)
 
 			if err := validateConfig(ConfigValidator{}, c.config); err != nil {
@@ -1320,7 +1329,7 @@ func addVIPPanel(c *Console) error {
 			spinner := NewSpinner(c.Gui, vipTextPanel, "Requesting IP through DHCP...")
 			spinner.Start()
 			go func(g *gocui.Gui) {
-				vip, err := getVipThroughDHCP(mgmtNetwork.Interface)
+				vip, err := getVipThroughDHCP("bond0")
 				if err != nil {
 					spinner.Stop(true, err.Error())
 					g.Update(func(g *gocui.Gui) error {

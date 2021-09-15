@@ -11,7 +11,7 @@ import (
 	"github.com/harvester/harvester-installer/pkg/config"
 )
 
-func applyNetworks(networks []config.Network) ([]byte, error) {
+func applyNetworks(networks map[string]config.Network) ([]byte, error) {
 	conf := &yipSchema.YipConfig{
 		Name: "Network Configuration",
 		Stages: map[string][]yipSchema.Stage{
@@ -38,7 +38,7 @@ func applyNetworks(networks []config.Network) ([]byte, error) {
 	if _, err := tempFile.Write(bytes); err != nil {
 		return nil, err
 	}
-	defer os.Remove(tempFile.Name())
+	// defer os.Remove(tempFile.Name())
 
 	cmd := exec.Command("/usr/bin/yip", "-s", "live", tempFile.Name())
 	cmd.Env = os.Environ()

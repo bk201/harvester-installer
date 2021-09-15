@@ -254,11 +254,12 @@ func getWebhookContext(cfg *config.HarvesterConfig) map[string]string {
 	}
 
 	// MAC address and IP addresses
-	if iface, err := net.InterfaceByName(cfg.Install.MgmtInterface); err == nil {
-		m["MACAddr"] = iface.HardwareAddr.String()
-		m["IPAddrV4"] = getIPAddr(iface, false)
-		m["IPAddrV6"] = getIPAddr(iface, true)
-	}
+	//TODO:
+	// if iface, err := net.InterfaceByName(cfg.Install.MgmtInterface); err == nil {
+	// 	m["MACAddr"] = iface.HardwareAddr.String()
+	// 	m["IPAddrV4"] = getIPAddr(iface, false)
+	// 	m["IPAddrV6"] = getIPAddr(iface, true)
+	// }
 	logrus.Debugf("webhook context %+v", m)
 	return m
 }

@@ -1,0 +1,14 @@
+STARTMODE='onboot'
+BONDING_MASTER='yes'
+
+BOOTPROTO='{{ .Method }}'
+{{if eq .Method "static" }}
+IPADDR={{ .IP }}
+NETMASK={{ .SubnetMask }}
+{{end}}
+
+{{range $i, $interface := .Interfaces }}
+BONDING_SLAVE_{{ $i }}='{{ $interface.Name }}'
+{{end}}
+
+BONDING_MODULE_OPTS='mode=balance-tlb miimon=100'

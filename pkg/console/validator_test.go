@@ -15,9 +15,9 @@ type FakeValidator struct {
 }
 
 func (v FakeValidator) Validate(cfg *config.HarvesterConfig) error {
-	if err := v.checkMgmtInterface(cfg.Install.MgmtInterface); err != nil {
-		return err
-	}
+	// if err := v.checkMgmtInterface(cfg.Install.MgmtInterface); err != nil {
+	// 	return err
+	// }
 	if err := v.checkDevice(cfg.Install.Device); err != nil {
 		return err
 	}
@@ -66,9 +66,9 @@ func TestValidateConfig(t *testing.T) {
 				Password:          "password",
 			},
 			Install: config.Install{
-				Mode:          config.ModeCreate,
-				MgmtInterface: "eth0",
-				Device:        "/dev/vda",
+				Mode: config.ModeCreate,
+				// MgmtInterface: "eth0",
+				Device: "/dev/vda",
 			},
 		}
 	}
@@ -139,7 +139,7 @@ func TestValidateConfig(t *testing.T) {
 			name: "invalid create config: interface not found",
 			cfg:  createCreateConfig(),
 			preApply: func(c *config.HarvesterConfig) {
-				c.MgmtInterface = "eth1"
+				// c.MgmtInterface = "eth1"
 			},
 			errMsg: ErrMsgInterfaceNotFound,
 		},
