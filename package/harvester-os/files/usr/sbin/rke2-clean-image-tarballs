@@ -1,0 +1,41 @@
+#!/bin/bash -e
+
+IMAGE_TARBALLS_DIR="/var/lib/rancher/rke2/agent/images"
+IMAGE_LISTS_DIR="/var/lib/rancher/harvester/images"
+
+WORKING_DIR=$(mktemp -d)
+trap "rm -rf $WORKING_DIR" exit
+
+export PATH=/var/lib/rancher/rke2/bin:$PATH
+export CONTAINERD_ADDRESS=/run/k3s/containerd/containerd.sock
+
+for image_list in $IMAGE_LISTS_DIR/*.txt; do
+    if [ ! -e $image_list ]; then
+        continue
+    fi
+
+    image_list_done="${image_list}.done"
+    if [ -e $image_list_done ]; then
+        echo "Skip $image_list"
+        continue
+    fi
+
+    echo "Checking $image_list"
+    tarball_name=$(basename -s .txt $image_list)
+    sorted_image_list="${WORKING_DIR}/${tarball_name}.txt"
+    sort $image_list > $sorted_image_list
+
+    missing=$(ctr -n k8s.io images ls -q | grep -v ^sha256 | sort | comm -23 $sorted_image_list -)
+    tarball="${IMAGE_TARBALLS_DIR}/${tarball_name}.tar.zst"
+    if [ -z "$missing" ]; then
+        tarball="${IMAGE_TARBALLS_DIR}/${tarball_name}.tar.zst"
+        echo "Removing ${tarball}"
+        rm -f $tarball
+        touch $image_list_done
+        continue
+    fi
+
+    echo "Missing images:"
+    echo "$missing"
+    echo "Not removing ${tarball}"
+done

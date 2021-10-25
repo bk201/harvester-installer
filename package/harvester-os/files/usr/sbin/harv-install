@@ -99,61 +99,11 @@ preload_rke2_images()
     fi
 
     RKE2_IMAGES_DIR="/var/lib/rancher/rke2/agent/images"
+    HARVESTER_IMAGES_STATE_DIR="/var/lib/rancher/harvester/images"
     mkdir -p $TARGET/$RKE2_IMAGES_DIR
-    mount --bind ${ISOMNT}/bundle/harvester/images $TARGET/$RKE2_IMAGES_DIR
-
-    cd $TARGET
-    mount --bind /dev dev
-    mount --bind /proc proc
-
-    echo "Loading images. This may take a few minutes..."
-    chroot . /bin/bash <<"EOF"
-      set -e
-      # update the nameserver
-      netconfig update
-
-      inst_tmp=$(mktemp -d -p /usr/local)
-      trap "rm -rf $inst_tmp" exit
-
-      # extract rke2 tarball from image
-      rke2_image=$(grep 'docker.io/rancher/system-agent-installer-rke2:' /var/lib/rancher/agent/images/rancherd-bootstrap-images.txt)
-      wharfie --images-dir /var/lib/rancher/agent/images/ $rke2_image $inst_tmp
-
-      # extract rke2 binary
-      rke2_tmp="$inst_tmp/rke2"
-      mkdir -p $rke2_tmp && tar xf $inst_tmp/rke2.linux-amd64.tar.gz -C $rke2_tmp
-
-      $rke2_tmp/bin/rke2 server &> /rke2.log &
-
-      export PATH=/var/lib/rancher/rke2/bin:$PATH
-      export CONTAINERD_ADDRESS=/run/k3s/containerd/containerd.sock
-
-      # wait for containerd to be ready
-      until ctr --connect-timeout 1s version&>/dev/null
-      do
-        sleep 1
-      done
-
-      # make sure all preloading images are ready
-      for i in /var/lib/rancher/rke2/agent/images/*.txt; do
-        stdbuf -oL ctr-check-images.sh $i
-      done
-
-      # stop containerd
-      pkill rke2
-      rm /rke2.log
-
-      rm -rf /var/lib/rancher/rke2/server
-      rm -rf /var/lib/rancher/rke2/agent/pod-manifests/*
-EOF
-
-    until umount dev&>/dev/null
-    do
-      sleep 1
-    done
-    umount proc
-    cd - &> /dev/null
-    umount ${TARGET}/${RKE2_IMAGES_DIR}
+    mkdir -p $TARGET/$HARVESTER_IMAGES_STATE_DIR
+    cp ${ISOMNT}/bundle/harvester/images/*.tar.zst $TARGET/$RKE2_IMAGES_DIR
+    cp ${ISOMNT}/bundle/harvester/images/*.txt $TARGET/$HARVESTER_IMAGES_STATE_DIR
 }
 
 preload_rke2_manifests_and_static()
