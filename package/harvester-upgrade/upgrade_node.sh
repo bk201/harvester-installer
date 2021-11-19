@@ -11,6 +11,8 @@ HOST_DIR="${HOST_DIR:-/host}"
 UPGRADE_REPO_URL=http://upgrade-repo.harvester-system
 UPGRADE_REPO_RELEASE_FILE="$UPGRADE_REPO_URL/harvester-iso/harvester-release.yaml"
 UPGRADE_REPO_SQUASHFS_IMAGE="$UPGRADE_REPO_URL/harvester-iso/rootfs.squashfs"
+UPGRADE_REPO_BUNDLE_ROOT="$UPGRADE_REPO_URL/harvester-iso/bundle"
+UPGRADE_REPO_BUNDLE_METADATA="$UPGRADE_REPO_URL/harvester-iso/bundle/metadata.yaml"
 UPGRADE_TMP_DIR=$HOST_DIR/usr/local/upgrade_tmp
 
 reboot_if_job_succeed()
@@ -69,6 +71,83 @@ remove_old_manifests()
   rm -f $HOST_DIR/var/lib/rancher/rke2/server/static/charts/rancher-monitoring-*.tgz
 }
 
+preload_images()
+{
+  export CONTAINER_RUNTIME_ENDPOINT=unix:///$HOST_DIR/run/k3s/containerd/containerd.sock
+  export CONTAINERD_ADDRESS=$HOST_DIR/run/k3s/containerd/containerd.sock
+
+  CTR="$HOST_DIR/$(readlink $HOST_DIR/var/lib/rancher/rke2/bin)/ctr"
+  if [ -z "$CTR" ];then
+    echo "Fail to get host ctr binary."
+    exit 1
+  fi
+
+  metadata=$(mktemp --suffix=.yaml)
+  curl -sfL $UPGRADE_REPO_BUNDLE_METADATA -o $metadata
+
+  tmp_image_archives=$(mktemp -d -p $UPGRADE_TMP_DIR)
+
+  # Common container images. Load with containerd.
+  yq -e -o=json e '.images.common' $metadata | jq -r '.[] | [.list, .archive] | @tsv' |
+    while IFS=$'\t' read -r list archive; do
+      archive_name=$(basename -s .tar.zst $archive)
+      image_list_url="$UPGRADE_REPO_BUNDLE_ROOT/$list"
+      archive_url="$UPGRADE_REPO_BUNDLE_ROOT/$archive"
+      image_list_file="${tmp_image_archives}/$(basename $list)"
+      archive_file="${tmp_image_archives}/${archive_name}.tar"
+
+      # Check if images already exist
+      curl -sfL $image_list_url | sort > $image_list_file
+      missing=$($CTR -n k8s.io images ls -q | grep -v ^sha256 | sort | comm -23 $image_list_file -)
+      if [ -z "$missing" ]; then
+        echo "Images in $image_list_file already present in the system. Skip preloading."
+        continue
+      fi
+
+      curl -sfL $archive_url | zstd -d -f --no-progress -o $archive_file
+      $CTR -n k8s.io image import $archive_file
+      rm -f $archive_file
+    done
+
+  rm -rf $tmp_image_archives
+
+  # RKE2 images: save tarballs
+  rke2_prefix="${REPO_RKE2_VERSION/+/-}-"
+  yq -e -o=json e '.images.rke2' $metadata | jq -r '.[] | [.list, .archive] | @tsv' |
+    while IFS=$'\t' read -r list archive; do
+      image_list_url="$UPGRADE_REPO_BUNDLE_ROOT/$list"
+      archive_url="$UPGRADE_REPO_BUNDLE_ROOT/$archive"
+      image_list_file="$HOST_DIR/var/lib/rancher/rke2/agent/images/${rke2_prefix}$(basename $list)"
+      archive_file="$HOST_DIR/var/lib/rancher/rke2/agent/images/${rke2_prefix}$(basename $archive)"
+
+      if [ ! -e $image_list_file ]; then
+        curl -sfL $image_list_url -o $image_list_file
+      fi
+
+      if [ ! -e $archive_file ]; then
+        curl -sfL $archive_url -o $archive_file
+      fi
+    done
+
+  # Rancherd images: save tarballs
+  rancherd_prefix="${REPO_OS_VERSION}-"
+  yq -e -o=json e '.images.rancherd' $metadata | jq -r '.[] | [.list, .archive] | @tsv' |
+    while IFS=$'\t' read -r list archive; do
+      image_list_url="$UPGRADE_REPO_BUNDLE_ROOT/$list"
+      archive_url="$UPGRADE_REPO_BUNDLE_ROOT/$archive"
+      image_list_file="$HOST_DIR/var/lib/rancher/agent/images/${rancherd_prefix}$(basename $list)"
+      archive_file="$HOST_DIR/var/lib/rancher/agent/images/${rancherd_prefix}$(basename $archive)"
+
+      if [ ! -e $image_list_file ]; then
+        curl -sfL $image_list_url -o $image_list_file
+      fi
+
+      if [ ! -e $archive_file ]; then
+        curl -sfL $archive_url -o $archive_file
+      fi
+    done
+}
+
 command_upgrade()
 {
   kubectl taint node $SYSTEM_UPGRADE_NODE_NAME kubevirt.io/drain- || true
@@ -84,24 +163,6 @@ command_upgrade()
   mount --rbind $HOST_DIR/dev /dev
   mount --rbind $HOST_DIR/run /run
 
-  # find /host/var/lib/rancher
-  # export PATH=/host/var/lib/rancher/rke2/bin:$PATH
-  export CONTAINER_RUNTIME_ENDPOINT=unix:///run/k3s/containerd/containerd.sock
-  export CONTAINERD_ADDRESS=/run/k3s/containerd/containerd.sock
-
-  # get latest ctr binary in /var/lib/rancher/rke2/data/<version>/bin/ctr
-  CTR=$(find  $HOST_DIR/var/lib/rancher/rke2/data -maxdepth 3 -executable -name ctr -printf "%T+ %p\n" | sort -r | head -n1 | awk '{print $2}')
-  if [ -z "$CTR" ];then
-    echo "fail to get host ctr path."
-    exit 1
-  fi
-
-  $CTR -n k8s.io images ls
-
-  mkdir -p $UPGRADE_TMP_DIR
-#  curl -sfL http://192.168.2.106/harvester/bundle/harvester/images/wip-images.tar.zst | zstd -d -f -o /host/usr/local/tmp/wip-images.tar
-#  $CTR -n k8s.io image import /host/usr/local/tmp/wip-images.tar
-
   tmp_rootfs_squashfs=$(mktemp -p $UPGRADE_TMP_DIR)
   tmp_rootfs_mount=$(mktemp -d) 
   curl -sfL $UPGRADE_REPO_SQUASHFS_IMAGE -o $tmp_rootfs_squashfs
@@ -109,7 +170,7 @@ command_upgrade()
 
   bash -x $HOST_DIR/usr/sbin/cos-upgrade --directory $tmp_rootfs_mount
   umount $tmp_rootfs_mount
-  rm -rf $UPGRADE_TMP_DIR
+  rm -rf $tmp_rootfs_squashfs
 
   umount -R /run
   label_node $SYSTEM_UPGRADE_NODE_NAME
@@ -265,9 +326,13 @@ wait_repo()
   done
 }
 
-detect_reboot()
+detect_repo()
 {
-  REPO_OS_VERSION=$(curl -sfL $UPGRADE_REPO_RELEASE_FILE | yq -e e '.os' -)
+  release_file=$(mktemp --suffix=.yaml)
+  curl -sfL $UPGRADE_REPO_RELEASE_FILE -o $release_file
+
+  REPO_OS_VERSION=$(yq -e e '.os' $release_file)
+  REPO_RKE2_VERSION=$(yq -e e '.kubernetes' $release_file)
 
   if [ -z "$REPO_OS_VERSION" ]; then
     echo "Fail to get OS version in the upgrade repo"
@@ -322,6 +387,7 @@ stop_vms()
 command_prepare()
 {
   wait_last_node
+  preload_images
 
   if [ "$NEED_REBOOT" = "y" ]; then
     # Live migrate VMs
@@ -368,7 +434,9 @@ done
 
 # TODO: In single node or shutdown mode, repo will be shutdown
 wait_repo
-detect_reboot 
+detect_repo
+
+mkdir -p $UPGRADE_TMP_DIR
 
 if [ "$HARVESTER_UPGRADE_PREPARE" = "true" ]; then
   command_prepare
