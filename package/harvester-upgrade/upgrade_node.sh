@@ -369,26 +369,39 @@ wait_vms_migrated()
   done
 }
 
-stop_vms()
+shutdown_non_migrate_able_vms()
 {
-  echo "Stop VMs..."
+  # VMs with nodeSelector
   kubectl get vmi -A -l kubevirt.io/nodeName=$SYSTEM_UPGRADE_NODE_NAME -o json |
-  jq -r  '.items[].metadata | [.name, .namespace] | @tsv' |
-  while IFS=$'\t' read -r name namespace; do
-    if [ -z "$name" ]; then
-      break
-    fi
-    echo "Stop ${namespace}/${name}"
-    virtctl stop $name -n $namespace
-  done
+    jq -r '.items[] | select(.spec.nodeSelector != null) | [.metadata.name, .metadata.namespace] | @tsv' |
+    while IFS=$'\t' read -r name namespace; do
+      if [ -z "$name" ]; then
+        break
+      fi
+      echo "Stop ${namespace}/${name}"
+      virtctl stop $name -n $namespace
+    done
+
+  # VMs with nodeAffinity
+  kubectl get vmi -A -l kubevirt.io/nodeName=$SYSTEM_UPGRADE_NODE_NAME -o json |
+    jq -r '.items[] | select(.spec.affinity.nodeAffinity != null) | [.metadata.name, .metadata.namespace] | @tsv' |
+    while IFS=$'\t' read -r name namespace; do
+      if [ -z "$name" ]; then
+        break
+      fi
+      echo "Stop ${namespace}/${name}"
+      virtctl stop $name -n $namespace
+    done
 }
 
 command_prepare()
 {
-  wait_last_node
   preload_images
+  wait_last_node
 
   if [ "$NEED_REBOOT" = "y" ]; then
+    shutdown_non_migrate_able_vms
+
     # Live migrate VMs
     kubectl taint node $SYSTEM_UPGRADE_NODE_NAME --overwrite kubevirt.io/drain=draining:NoSchedule
 
