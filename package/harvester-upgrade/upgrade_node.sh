@@ -168,7 +168,7 @@ command_upgrade()
   curl -fL $UPGRADE_REPO_SQUASHFS_IMAGE -o $tmp_rootfs_squashfs
   mount $tmp_rootfs_squashfs $tmp_rootfs_mount
 
-  bash -x $HOST_DIR/usr/sbin/cos-upgrade --directory $tmp_rootfs_mount
+  bash -x $HOST_DIR/usr/sbin/cos upgrade --directory $tmp_rootfs_mount
   umount $tmp_rootfs_mount
   rm -rf $tmp_rootfs_squashfs
 
