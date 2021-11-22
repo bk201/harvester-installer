@@ -305,12 +305,12 @@ wait_last_node()
 
     echo "Waiting for node ${node}..."
     wait_node_ready $node
-    wait_instance_managers_on_node $node
 
     # If we start instance manager and migrate VMs immediately, the volume attaching might be stuck on other nodes
-    sleep 60
+    # wait_instance_managers_on_node $node
+    # sleep 60
+    # wait_replicas_on_node $node
 
-    wait_replicas_on_node $node
     unlabel_node $node
     echo "Node $node is ready"
   done
