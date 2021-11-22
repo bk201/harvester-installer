@@ -83,7 +83,7 @@ preload_images()
   fi
 
   metadata=$(mktemp --suffix=.yaml)
-  curl -sfL $UPGRADE_REPO_BUNDLE_METADATA -o $metadata
+  curl -fL $UPGRADE_REPO_BUNDLE_METADATA -o $metadata
 
   tmp_image_archives=$(mktemp -d -p $UPGRADE_TMP_DIR)
 
@@ -121,11 +121,11 @@ preload_images()
       archive_file="$HOST_DIR/var/lib/rancher/rke2/agent/images/${rke2_prefix}$(basename $archive)"
 
       if [ ! -e $image_list_file ]; then
-        curl -sfL $image_list_url -o $image_list_file
+        curl -fL $image_list_url -o $image_list_file
       fi
 
       if [ ! -e $archive_file ]; then
-        curl -sfL $archive_url -o $archive_file
+        curl -fL $archive_url -o $archive_file
       fi
     done
 
@@ -139,11 +139,11 @@ preload_images()
       archive_file="$HOST_DIR/var/lib/rancher/agent/images/${rancherd_prefix}$(basename $archive)"
 
       if [ ! -e $image_list_file ]; then
-        curl -sfL $image_list_url -o $image_list_file
+        curl -fL $image_list_url -o $image_list_file
       fi
 
       if [ ! -e $archive_file ]; then
-        curl -sfL $archive_url -o $archive_file
+        curl -fL $archive_url -o $archive_file
       fi
     done
 }
@@ -165,7 +165,7 @@ command_upgrade()
 
   tmp_rootfs_squashfs=$(mktemp -p $UPGRADE_TMP_DIR)
   tmp_rootfs_mount=$(mktemp -d) 
-  curl -sfL $UPGRADE_REPO_SQUASHFS_IMAGE -o $tmp_rootfs_squashfs
+  curl -fL $UPGRADE_REPO_SQUASHFS_IMAGE -o $tmp_rootfs_squashfs
   mount $tmp_rootfs_squashfs $tmp_rootfs_mount
 
   bash -x $HOST_DIR/usr/sbin/cos-upgrade --directory $tmp_rootfs_mount
@@ -176,7 +176,6 @@ command_upgrade()
   label_node $SYSTEM_UPGRADE_NODE_NAME
   kubectl uncordon $SYSTEM_UPGRADE_NODE_NAME || true
   reboot_if_job_succeed
-  # nsenter -i -m -t 1 -- reboot
 }
 
 unlabel_node()
