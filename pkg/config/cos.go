@@ -470,7 +470,7 @@ func getAddStaticDNSServersCmd(servers []string) string {
 }
 
 func (c *HarvesterConfig) ToCosInstallEnv() ([]string, error) {
-	return ToEnv("COS_INSTALL_", c.Install)
+	return ToEnv("_COS_INSTALL_", c.Install)
 }
 
 // Returns Rancherd bootstrap resources
