@@ -66,13 +66,11 @@ save_image ${IMAGES_DIR}/rancher-images.txt ${IMAGES_DIR}
 
 # RKE2 images
 RKE2_IMAGES_URL="https://github.com/rancher/rke2/releases/download/${RKE2_VERSION}"
-if [ -f "${SCRIPTS_DIR}/images/rke2-images.linux-amd64.txt" ] && [ -f "${SCRIPTS_DIR}/images/rke2-images.linux-amd64.tar.zst" ]; then
-  mv "${SCRIPTS_DIR}/images/rke2-images.linux-amd64.txt" "${IMAGES_DIR}/rke2-images.linux-amd64.txt"
-  mv "${SCRIPTS_DIR}/images/rke2-images.linux-amd64.tar.zst" "${IMAGES_DIR}/rke2-images.linux-amd64.tar.zst"
-else
-  get_url "${RKE2_IMAGES_URL}/rke2-images.linux-amd64.txt" "${IMAGES_DIR}/rke2-images.linux-amd64.txt"
-  get_url "${RKE2_IMAGES_URL}/rke2-images.linux-amd64.tar.zst" "${IMAGES_DIR}/rke2-images.linux-amd64.tar.zst"
-fi
+RKE2_IMAGES_URL="http://192.168.2.106/harvester/rke2/${RKE2_VERSION}"
+get_url "${RKE2_IMAGES_URL}/rke2-images.linux-amd64.txt" "${IMAGES_DIR}/rke2-images.linux-amd64.txt"
+get_url "${RKE2_IMAGES_URL}/rke2-images.linux-amd64.tar.zst" "${IMAGES_DIR}/rke2-images.linux-amd64.tar.zst"
+#get_url "${RKE2_IMAGES_URL}/rke2-images-harvester.linux-amd64.tar.zst" "${IMAGES_DIR}/rke2-images-harvester.linux-amd64.tar.zst"
+#get_url "${RKE2_IMAGES_URL}/rke2-images-harvester.linux-amd64.txt" "${IMAGES_DIR}/rke2-images-harvester.linux-amd64.txt"
 
 # exclude SR-IOV images
 save_image_list "rke2-images-multus" "${RKE2_IMAGES_URL}/rke2-images-multus.linux-amd64.txt" ${IMAGES_DIR}/rke2-images-multus.linux-amd64.txt
