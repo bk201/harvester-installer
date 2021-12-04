@@ -1,18 +1,12 @@
 #!/bin/bash -ex
 
-PROG=$0
-usage()
-{
-    echo "Usage: $PROG [--prepare] [--debug]"
-    exit 1
-}
-
 HOST_DIR="${HOST_DIR:-/host}"
-UPGRADE_REPO_URL=http://upgrade-repo.harvester-system
-UPGRADE_REPO_RELEASE_FILE="$UPGRADE_REPO_URL/harvester-iso/harvester-release.yaml"
-UPGRADE_REPO_SQUASHFS_IMAGE="$UPGRADE_REPO_URL/harvester-iso/rootfs.squashfs"
-UPGRADE_REPO_BUNDLE_ROOT="$UPGRADE_REPO_URL/harvester-iso/bundle"
-UPGRADE_REPO_BUNDLE_METADATA="$UPGRADE_REPO_URL/harvester-iso/bundle/metadata.yaml"
+UPGRADE_REPO_URL=http://upgrade-repo.harvester-system/harvester-iso
+UPGRADE_REPO_URL=http://10.10.0.1/harvester/iso
+UPGRADE_REPO_RELEASE_FILE="$UPGRADE_REPO_URL/harvester-release.yaml"
+UPGRADE_REPO_SQUASHFS_IMAGE="$UPGRADE_REPO_URL/rootfs.squashfs"
+UPGRADE_REPO_BUNDLE_ROOT="$UPGRADE_REPO_URL/bundle"
+UPGRADE_REPO_BUNDLE_METADATA="$UPGRADE_REPO_URL/bundle/metadata.yaml"
 UPGRADE_TMP_DIR=$HOST_DIR/usr/local/upgrade_tmp
 
 reboot_if_job_succeed()
@@ -129,14 +123,14 @@ preload_images()
       fi
     done
 
-  # Rancherd images: save tarballs
-  rancherd_prefix="${REPO_OS_VERSION}-"
-  yq -e -o=json e '.images.rancherd' $metadata | jq -r '.[] | [.list, .archive] | @tsv' |
+  # Agent images: save tarballs
+  agent_prefix="${REPO_OS_VERSION}-"
+  yq -e -o=json e '.images.agent' $metadata | jq -r '.[] | [.list, .archive] | @tsv' |
     while IFS=$'\t' read -r list archive; do
       image_list_url="$UPGRADE_REPO_BUNDLE_ROOT/$list"
       archive_url="$UPGRADE_REPO_BUNDLE_ROOT/$archive"
-      image_list_file="$HOST_DIR/var/lib/rancher/agent/images/${rancherd_prefix}$(basename $list)"
-      archive_file="$HOST_DIR/var/lib/rancher/agent/images/${rancherd_prefix}$(basename $archive)"
+      image_list_file="$HOST_DIR/var/lib/rancher/agent/images/${agent_prefix}$(basename $list)"
+      archive_file="$HOST_DIR/var/lib/rancher/agent/images/${agent_prefix}$(basename $archive)"
 
       if [ ! -e $image_list_file ]; then
         curl -fL $image_list_url -o $image_list_file
@@ -330,24 +324,25 @@ detect_repo()
   release_file=$(mktemp --suffix=.yaml)
   curl -sfL $UPGRADE_REPO_RELEASE_FILE -o $release_file
 
-  REPO_OS_VERSION=$(yq -e e '.os' $release_file)
+  REPO_OS_PRETTY_NAME="$(yq -e e '.os' $release_file)"
+  REPO_OS_VERSION="${REPO_OS_PRETTY_NAME#Harvester }"
   REPO_RKE2_VERSION=$(yq -e e '.kubernetes' $release_file)
 
-  if [ -z "$REPO_OS_VERSION" ]; then
-    echo "Fail to get OS version in the upgrade repo"
-    exit 1
-  fi
+  # if [ -z "$REPO_OS_VERSION" ]; then
+  #   echo "Fail to get OS version in the upgrade repo"
+  #   exit 1
+  # fi
 
-  HOST_OS_PRETTY_NAME=$(bash -c 'source /host/etc/os-release && echo $PRETTY_NAME')
-  if [ -z "$HOST_OS_PRETTY_NAME" ]; then
-    echo "Fail to get OS pretty name for current node"
-    exit 1
-  fi
+  # HOST_OS_PRETTY_NAME=$(bash -c 'source /host/etc/os-release && echo $PRETTY_NAME')
+  # if [ -z "$HOST_OS_PRETTY_NAME" ]; then
+  #   echo "Fail to get OS pretty name for current node"
+  #   exit 1
+  # fi
 
-  NEED_REBOOT="n"
-  if [ "$HOST_OS_PRETTY_NAME" != "Harvester $REPO_OS_VERSION" ]; then
-    NEED_REBOOT="y"
-  fi
+  # NEED_REBOOT="n"
+  # if [ "$HOST_OS_PRETTY_NAME" != "Harvester $REPO_OS_VERSION" ]; then
+  #   NEED_REBOOT="y"
+  # fi
 }
 
 get_running_vm_count()
@@ -396,8 +391,10 @@ shutdown_non_migrate_able_vms()
 
 command_prepare()
 {
+  wait_repo
+  detect_repo
   preload_images
-  wait_last_node
+  return
 
   if [ "$NEED_REBOOT" = "y" ]; then
     shutdown_non_migrate_able_vms
@@ -414,8 +411,6 @@ command_prepare()
     # TODO: disable eviction
     # Drain this node
     kubectl drain $SYSTEM_UPGRADE_NODE_NAME --pod-selector "!upgrade.cattle.io/controller" --force --ignore-daemonsets --delete-local-data
-  else
-    echo "Nothing to do?"
   fi
 }
 
@@ -428,6 +423,9 @@ wait_evacuation_pdb_gone()
     sleep 5
   done
 }
+
+
+mkdir -p $UPGRADE_TMP_DIR
 
 while [ "$#" -gt 0 ]; do
     case $1 in
@@ -444,14 +442,6 @@ while [ "$#" -gt 0 ]; do
     shift 1
 done
 
-# TODO: In single node or shutdown mode, repo will be shutdown
-wait_repo
-detect_repo
-
-mkdir -p $UPGRADE_TMP_DIR
-
 if [ "$HARVESTER_UPGRADE_PREPARE" = "true" ]; then
   command_prepare
-else
-  command_upgrade
 fi
