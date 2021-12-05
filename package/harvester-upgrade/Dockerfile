@@ -19,3 +19,4 @@ RUN curl -sfL https://github.com/rancher/wharfie/releases/latest/download/wharfi
 
 COPY upgrade_node.sh /usr/local/bin/
 COPY upgrade_manifests.sh /usr/local/bin/
+COPY lib.sh /usr/local/bin

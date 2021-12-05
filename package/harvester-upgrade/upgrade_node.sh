@@ -1,13 +1,10 @@
 #!/bin/bash -ex
 
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
 HOST_DIR="${HOST_DIR:-/host}"
-UPGRADE_REPO_URL=http://upgrade-repo.harvester-system/harvester-iso
-UPGRADE_REPO_URL=http://10.10.0.1/harvester/iso
-UPGRADE_REPO_RELEASE_FILE="$UPGRADE_REPO_URL/harvester-release.yaml"
-UPGRADE_REPO_SQUASHFS_IMAGE="$UPGRADE_REPO_URL/rootfs.squashfs"
-UPGRADE_REPO_BUNDLE_ROOT="$UPGRADE_REPO_URL/bundle"
-UPGRADE_REPO_BUNDLE_METADATA="$UPGRADE_REPO_URL/bundle/metadata.yaml"
 UPGRADE_TMP_DIR=$HOST_DIR/usr/local/upgrade_tmp
+
+source $SCRIPT_DIR/lib.sh
 
 reboot_if_job_succeed()
 {
@@ -105,41 +102,8 @@ preload_images()
 
   rm -rf $tmp_image_archives
 
-  # RKE2 images: save tarballs
-  rke2_prefix="${REPO_RKE2_VERSION/+/-}-"
-  yq -e -o=json e '.images.rke2' $metadata | jq -r '.[] | [.list, .archive] | @tsv' |
-    while IFS=$'\t' read -r list archive; do
-      image_list_url="$UPGRADE_REPO_BUNDLE_ROOT/$list"
-      archive_url="$UPGRADE_REPO_BUNDLE_ROOT/$archive"
-      image_list_file="$HOST_DIR/var/lib/rancher/rke2/agent/images/${rke2_prefix}$(basename $list)"
-      archive_file="$HOST_DIR/var/lib/rancher/rke2/agent/images/${rke2_prefix}$(basename $archive)"
-
-      if [ ! -e $image_list_file ]; then
-        curl -fL $image_list_url -o $image_list_file
-      fi
-
-      if [ ! -e $archive_file ]; then
-        curl -fL $archive_url -o $archive_file
-      fi
-    done
-
-  # Agent images: save tarballs
-  agent_prefix="${REPO_OS_VERSION}-"
-  yq -e -o=json e '.images.agent' $metadata | jq -r '.[] | [.list, .archive] | @tsv' |
-    while IFS=$'\t' read -r list archive; do
-      image_list_url="$UPGRADE_REPO_BUNDLE_ROOT/$list"
-      archive_url="$UPGRADE_REPO_BUNDLE_ROOT/$archive"
-      image_list_file="$HOST_DIR/var/lib/rancher/agent/images/${agent_prefix}$(basename $list)"
-      archive_file="$HOST_DIR/var/lib/rancher/agent/images/${agent_prefix}$(basename $archive)"
-
-      if [ ! -e $image_list_file ]; then
-        curl -fL $image_list_url -o $image_list_file
-      fi
-
-      if [ ! -e $archive_file ]; then
-        curl -fL $archive_url -o $archive_file
-      fi
-    done
+  download_image_archives_from_repo "rke2" $HOST_DIR/var/lib/rancher/rke2/agent/images
+  download_image_archives_from_repo "agent" $HOST_DIR/var/lib/rancher/agent/images
 }
 
 command_upgrade()
@@ -310,40 +274,6 @@ wait_last_node()
   done
 }
 
-wait_repo()
-{
-  until curl -sfL $UPGRADE_REPO_RELEASE_FILE
-  do
-    echo "Wait for upgrade repo ready..."
-    sleep 5
-  done
-}
-
-detect_repo()
-{
-  release_file=$(mktemp --suffix=.yaml)
-  curl -sfL $UPGRADE_REPO_RELEASE_FILE -o $release_file
-
-  REPO_OS_PRETTY_NAME="$(yq -e e '.os' $release_file)"
-  REPO_OS_VERSION="${REPO_OS_PRETTY_NAME#Harvester }"
-  REPO_RKE2_VERSION=$(yq -e e '.kubernetes' $release_file)
-
-  # if [ -z "$REPO_OS_VERSION" ]; then
-  #   echo "Fail to get OS version in the upgrade repo"
-  #   exit 1
-  # fi
-
-  # HOST_OS_PRETTY_NAME=$(bash -c 'source /host/etc/os-release && echo $PRETTY_NAME')
-  # if [ -z "$HOST_OS_PRETTY_NAME" ]; then
-  #   echo "Fail to get OS pretty name for current node"
-  #   exit 1
-  # fi
-
-  # NEED_REBOOT="n"
-  # if [ "$HOST_OS_PRETTY_NAME" != "Harvester $REPO_OS_VERSION" ]; then
-  #   NEED_REBOOT="y"
-  # fi
-}
 
 get_running_vm_count()
 {
@@ -391,8 +321,6 @@ shutdown_non_migrate_able_vms()
 
 command_prepare()
 {
-  wait_repo
-  detect_repo
   preload_images
   return
 
@@ -425,23 +353,27 @@ wait_evacuation_pdb_gone()
 }
 
 
+command_pre_drain() {
+  true
+
+}
+
+command_post_drain() {
+  true
+
+}
+
 mkdir -p $UPGRADE_TMP_DIR
 
-while [ "$#" -gt 0 ]; do
-    case $1 in
-        --debug)
-            set -x
-            ;;
-        --prepare)
-            HARVESTER_UPGRADE_PREPARE=true
-            ;;
-        *)
-            break
-            ;;
-    esac
-    shift 1
-done
+# echo "dry-run" && exit 0
 
-if [ "$HARVESTER_UPGRADE_PREPARE" = "true" ]; then
-  command_prepare
-fi
+case $1 in
+  prepare)
+    command_prepare
+    ;;
+  pre-drain)
+    command_pre_drain
+    ;;
+  post-drain)
+    command_post_drain
+esac
