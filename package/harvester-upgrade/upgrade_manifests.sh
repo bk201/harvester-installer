@@ -82,6 +82,9 @@ spec:
 EOF
   kubectl patch managedcharts.management.cattle.io harvester -n fleet-local --patch-file ./harvester.yaml --type merge
   # TODO: Is there a way to check Harvester is upgraded and operational?
+  # helm chart deployed?
+  # settings server-version
+
 }
 
 upgrade_monitoring() {

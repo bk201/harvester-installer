@@ -10,13 +10,13 @@ reboot_if_job_succeed()
 {
   cat > $HOST_DIR/tmp/upgrade-reboot.sh << EOF
 #!/bin/bash -ex
-SYSTEM_UPGRADE_POD_NAME=$SYSTEM_UPGRADE_POD_NAME
+HARVESTER_UPGRADE_POD_NAME=$HARVESTER_UPGRADE_POD_NAME
 
 EOF
 
   cat >> $HOST_DIR/tmp/upgrade-reboot.sh << 'EOF'
 source /etc/bash.bashrc.local
-pod_id=$(crictl pods --name $SYSTEM_UPGRADE_POD_NAME --namespace cattle-system -o json | jq -er '.items[0].id')
+pod_id=$(crictl pods --name $HARVESTER_UPGRADE_POD_NAME --namespace cattle-system -o json | jq -er '.items[0].id')
 
 # get `upgrade` container ID
 container_id=$(crictl ps --pod $pod_id --name upgrade -o json -a | jq -er '.containers[0].id')
@@ -108,13 +108,13 @@ preload_images()
 
 command_upgrade()
 {
-  kubectl taint node $SYSTEM_UPGRADE_NODE_NAME kubevirt.io/drain- || true
+  kubectl taint node $HARVESTER_UPGRADE_NODE_NAME kubevirt.io/drain- || true
 
   # Not needed if we switch to ManagedChart
   remove_old_manifests
 
   if [ "$NEED_REBOOT" != "y" ]; then
-    label_node $SYSTEM_UPGRADE_NODE_NAME
+    label_node $HARVESTER_UPGRADE_NODE_NAME
     exit 0
   fi
 
@@ -131,8 +131,8 @@ command_upgrade()
   rm -rf $tmp_rootfs_squashfs
 
   umount -R /run
-  label_node $SYSTEM_UPGRADE_NODE_NAME
-  kubectl uncordon $SYSTEM_UPGRADE_NODE_NAME || true
+  label_node $HARVESTER_UPGRADE_NODE_NAME
+  kubectl uncordon $HARVESTER_UPGRADE_NODE_NAME || true
   reboot_if_job_succeed
 }
 
@@ -256,7 +256,7 @@ wait_last_node()
   nodes=$(kubectl get nodes --selector harvesterhci.io/latest-upgrade-node=true -o jsonpath='{.items[*].metadata.name}')
   for node in $nodes; do
 
-    if [ "$node" = "$SYSTEM_UPGRADE_NODE_NAME" ]; then
+    if [ "$node" = "$HARVESTER_UPGRADE_NODE_NAME" ]; then
       echo "Warning: skip waiting for myself"
       continue
     fi
@@ -274,12 +274,11 @@ wait_last_node()
   done
 }
 
-
 get_running_vm_count()
 {
   local count
 
-  count=$(kubectl get vmi -A -l kubevirt.io/nodeName=$SYSTEM_UPGRADE_NODE_NAME -ojson | jq '.items | length' || true)
+  count=$(kubectl get vmi -A -l kubevirt.io/nodeName=$HARVESTER_UPGRADE_NODE_NAME -ojson | jq '.items | length' || true)
   echo $count
 }
 
@@ -297,7 +296,7 @@ wait_vms_migrated()
 shutdown_non_migrate_able_vms()
 {
   # VMs with nodeSelector
-  kubectl get vmi -A -l kubevirt.io/nodeName=$SYSTEM_UPGRADE_NODE_NAME -o json |
+  kubectl get vmi -A -l kubevirt.io/nodeName=$HARVESTER_UPGRADE_NODE_NAME -o json |
     jq -r '.items[] | select(.spec.nodeSelector != null) | [.metadata.name, .metadata.namespace] | @tsv' |
     while IFS=$'\t' read -r name namespace; do
       if [ -z "$name" ]; then
@@ -308,7 +307,7 @@ shutdown_non_migrate_able_vms()
     done
 
   # VMs with nodeAffinity
-  kubectl get vmi -A -l kubevirt.io/nodeName=$SYSTEM_UPGRADE_NODE_NAME -o json |
+  kubectl get vmi -A -l kubevirt.io/nodeName=$HARVESTER_UPGRADE_NODE_NAME -o json |
     jq -r '.items[] | select(.spec.affinity.nodeAffinity != null) | [.metadata.name, .metadata.namespace] | @tsv' |
     while IFS=$'\t' read -r name namespace; do
       if [ -z "$name" ]; then
@@ -322,24 +321,6 @@ shutdown_non_migrate_able_vms()
 command_prepare()
 {
   preload_images
-  return
-
-  if [ "$NEED_REBOOT" = "y" ]; then
-    shutdown_non_migrate_able_vms
-
-    # Live migrate VMs
-    kubectl taint node $SYSTEM_UPGRADE_NODE_NAME --overwrite kubevirt.io/drain=draining:NoSchedule
-
-    # Wait for VM migrated
-    wait_vms_migrated
-
-    # KubeVirt's pdb might cause drain fail
-    wait_evacuation_pdb_gone
-
-    # TODO: disable eviction
-    # Drain this node
-    kubectl drain $SYSTEM_UPGRADE_NODE_NAME --pod-selector "!upgrade.cattle.io/controller" --force --ignore-daemonsets --delete-local-data
-  fi
 }
 
 wait_evacuation_pdb_gone()
@@ -354,13 +335,41 @@ wait_evacuation_pdb_gone()
 
 
 command_pre_drain() {
-  true
+  shutdown_non_migrate_able_vms
 
+  # Live migrate VMs
+  kubectl taint node $HARVESTER_UPGRADE_NODE_NAME --overwrite kubevirt.io/drain=draining:NoSchedule
+
+  # Wait for VM migrated
+  wait_vms_migrated
+
+  # KubeVirt's pdb might cause drain fail
+  wait_evacuation_pdb_gone
 }
 
 command_post_drain() {
-  true
+  kubectl taint node $HARVESTER_UPGRADE_NODE_NAME kubevirt.io/drain- || true
 
+  ls /host/etc
+  echo $HARVESTER_UPGRADE_POD_NAME
+
+  exit 0
+
+  # upgrade OS image and reboot
+  mount --rbind $HOST_DIR/dev /dev
+  mount --rbind $HOST_DIR/run /run
+
+  tmp_rootfs_squashfs=$(mktemp -p $UPGRADE_TMP_DIR)
+  tmp_rootfs_mount=$(mktemp -d) 
+  curl -fL $UPGRADE_REPO_SQUASHFS_IMAGE -o $tmp_rootfs_squashfs
+  mount $tmp_rootfs_squashfs $tmp_rootfs_mount
+
+  bash -x $HOST_DIR/usr/sbin/cos upgrade --directory $tmp_rootfs_mount
+  umount $tmp_rootfs_mount
+  rm -rf $tmp_rootfs_squashfs
+
+  umount -R /run
+  reboot_if_job_succeed
 }
 
 mkdir -p $UPGRADE_TMP_DIR
