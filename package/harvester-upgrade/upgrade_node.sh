@@ -6,6 +6,8 @@ UPGRADE_TMP_DIR=$HOST_DIR/usr/local/upgrade_tmp
 
 source $SCRIPT_DIR/lib.sh
 
+# Create a systemd service on host to reboot the host if this running pod succeeds.
+# This prevents job become from entering `Error`.
 reboot_if_job_succeed()
 {
   cat > $HOST_DIR/tmp/upgrade-reboot.sh << EOF
@@ -16,10 +18,10 @@ EOF
 
   cat >> $HOST_DIR/tmp/upgrade-reboot.sh << 'EOF'
 source /etc/bash.bashrc.local
-pod_id=$(crictl pods --name $HARVESTER_UPGRADE_POD_NAME --namespace cattle-system -o json | jq -er '.items[0].id')
+pod_id=$(crictl pods --name $HARVESTER_UPGRADE_POD_NAME --namespace harvester-system -o json | jq -er '.items[0].id')
 
 # get `upgrade` container ID
-container_id=$(crictl ps --pod $pod_id --name upgrade -o json -a | jq -er '.containers[0].id')
+container_id=$(crictl ps --pod $pod_id --name apply -o json -a | jq -er '.containers[0].id')
 container_state=$(crictl inspect $container_id | jq -er '.status.state')
 
 if [ "$container_state" = "CONTAINER_EXITED" ]; then
@@ -40,7 +42,6 @@ EOF
   cat > $HOST_DIR/run/systemd/system/upgrade-reboot.service << 'EOF'
 [Unit]
 Description=Upgrade reboot
-
 [Service]
 Type=simple
 ExecStart=/tmp/upgrade-reboot.sh
@@ -50,16 +51,6 @@ EOF
 
   chroot $HOST_DIR systemctl daemon-reload
   chroot $HOST_DIR systemctl start upgrade-reboot
-}
-
-remove_old_manifests()
-{
-  rm -f $HOST_DIR/var/lib/rancher/rke2/server/manifests/harvester.yaml
-  rm -f $HOST_DIR/var/lib/rancher/rke2/server/manifests/monitoring-crd.yaml
-  rm -f $HOST_DIR/var/lib/rancher/rke2/server/manifests/monitoring-dashboard.yaml
-  rm -f $HOST_DIR/var/lib/rancher/rke2/server/manifests/monitoring.yaml
-  rm -f $HOST_DIR/var/lib/rancher/rke2/server/static/charts/harvester-*.tgz
-  rm -f $HOST_DIR/var/lib/rancher/rke2/server/static/charts/rancher-monitoring-*.tgz
 }
 
 preload_images()
@@ -104,174 +95,6 @@ preload_images()
 
   download_image_archives_from_repo "rke2" $HOST_DIR/var/lib/rancher/rke2/agent/images
   download_image_archives_from_repo "agent" $HOST_DIR/var/lib/rancher/agent/images
-}
-
-command_upgrade()
-{
-  kubectl taint node $HARVESTER_UPGRADE_NODE_NAME kubevirt.io/drain- || true
-
-  # Not needed if we switch to ManagedChart
-  remove_old_manifests
-
-  if [ "$NEED_REBOOT" != "y" ]; then
-    label_node $HARVESTER_UPGRADE_NODE_NAME
-    exit 0
-  fi
-
-  mount --rbind $HOST_DIR/dev /dev
-  mount --rbind $HOST_DIR/run /run
-
-  tmp_rootfs_squashfs=$(mktemp -p $UPGRADE_TMP_DIR)
-  tmp_rootfs_mount=$(mktemp -d) 
-  curl -fL $UPGRADE_REPO_SQUASHFS_IMAGE -o $tmp_rootfs_squashfs
-  mount $tmp_rootfs_squashfs $tmp_rootfs_mount
-
-  bash -x $HOST_DIR/usr/sbin/cos upgrade --directory $tmp_rootfs_mount
-  umount $tmp_rootfs_mount
-  rm -rf $tmp_rootfs_squashfs
-
-  umount -R /run
-  label_node $HARVESTER_UPGRADE_NODE_NAME
-  kubectl uncordon $HARVESTER_UPGRADE_NODE_NAME || true
-  reboot_if_job_succeed
-}
-
-unlabel_node()
-{
-  kubectl label node $1 harvesterhci.io/latest-upgrade-node-
-}
-
-label_node()
-{
-  local node=$1
-  kubectl label node $node harvesterhci.io/latest-upgrade-node=true
-  
-  boot_id=$(get_boot_id $node)
-  kubectl label node $node harvesterhci.io/upgrade-last-boot-id=$boot_id --overwrite
-  kubectl label node $node harvesterhci.io/upgrade-new-os-version=$REPO_OS_VERSION --overwrite
-}
-
-get_boot_id()
-{
-  kubectl get node $1 -o yaml | yq -e e '.status.nodeInfo.bootID' -
-}
-
-get_os_version()
-{
-  kubectl get node $1 -o yaml | yq -e e '.status.nodeInfo.osImage' -
-}
-
-replica_check_state()
-{
-  local namespace=$1
-  local name=$2
-  local replica_json
-  local desire_state
-  local current_state
-
-  replica_json=$(kubectl get replicas.longhorn.io -n $namespace $name -o json)
-  desire_state=$(echo "$replica_json" | jq -er '.spec.desireState')
-  current_state=$(echo "$replica_json" | jq -er '.status.currentState')
-
-  if [ "$desire_state" = "$current_state" ]; then
-    return 0
-  fi
-
-  echo "Replica ${namespace}/${name} desireState: $desire_state , currentState: $current_state"
-  return 1
-}
-
-wait_replica()
-{ 
-  local namespace=$1
-  local name=$2
-
-  echo "Waiting for replica ${namespace}/${name}..."
-
-  until replica_check_state $namespace $name; do
-    sleep 5
-  done
-}
-
-wait_replicas_on_node()
-{
-  longhorn_node=$1
-
-  kubectl get -A replicas.longhorn.io --selector longhornnode=$longhorn_node -o json |
-    jq -r '.items[].metadata | [.name, .namespace] | @tsv' |
-    while IFS=$'\t' read -r name namespace; do
-      if [ -z $name ]; then
-        break
-      fi
-      wait_replica $namespace $name
-    done
-}
-
-wait_node_ready()
-{
-  local node=$1
-  local new_os_version
-
-  new_os_version=$( kubectl get node $node -o yaml | yq -e e '.metadata.labels."harvesterhci.io/upgrade-new-os-version"' -)
-  until [ "$(get_os_version $node)" == "Harvester $new_os_version" ]
-  do
-    echo "Waiting for node $node to reboot..."
-    sleep 10
-  done
-
-  until kubectl get node $node -o json | jq -r '.status.conditions[] | select(.type == "Ready" and .status == "True")'
-  do
-    echo "Waiting for node $node ready..."
-    sleep 10
-  done
-
-  until ! kubectl get node $node -o json | jq -er 'select(.spec.unschedulable == true)'
-  do
-    echo "Waiting for node $node to be schedulable..."
-    sleep 10
-  done
-}
-
-get_instance_managers()
-{
-  local node=$1
-  kubectl get instancemanagers.longhorn.io -A -l longhorn.io/node=$node -o json | jq -r '.items | map(select(.status.currentState == "running")) | length'
-}
-
-wait_instance_managers_on_node ()
-{
-  local node=$1
-
-  until [ "$(get_instance_managers $node)" = "2" ]
-  do
-    echo "Waiting for instance managers on node $node..."
-    sleep 5
-  done
-}
-
-wait_last_node()
-{
-  local nodes
-
-  nodes=$(kubectl get nodes --selector harvesterhci.io/latest-upgrade-node=true -o jsonpath='{.items[*].metadata.name}')
-  for node in $nodes; do
-
-    if [ "$node" = "$HARVESTER_UPGRADE_NODE_NAME" ]; then
-      echo "Warning: skip waiting for myself"
-      continue
-    fi
-
-    echo "Waiting for node ${node}..."
-    wait_node_ready $node
-
-    # If we start instance manager and migrate VMs immediately, the volume attaching might be stuck on other nodes
-    # wait_instance_managers_on_node $node
-    # sleep 60
-    # wait_replicas_on_node $node
-
-    unlabel_node $node
-    echo "Node $node is ready"
-  done
 }
 
 get_running_vm_count()
@@ -320,6 +143,11 @@ shutdown_non_migrate_able_vms()
 
 command_prepare()
 {
+  return
+  # sleep 5
+  # return
+  wait_repo
+  detect_repo
   preload_images
 }
 
@@ -347,14 +175,26 @@ command_pre_drain() {
   wait_evacuation_pdb_gone
 }
 
-command_post_drain() {
-  kubectl taint node $HARVESTER_UPGRADE_NODE_NAME kubevirt.io/drain- || true
+get_rke2_version() {
+  echo $(kubectl get node $HARVESTER_UPGRADE_NODE_NAME -o yaml | yq -e e '.status.nodeInfo.kubeletVersion' -)
+}
 
-  ls /host/etc
-  echo $HARVESTER_UPGRADE_POD_NAME
+wait_rke2_upgrade() {
+  until [ "$(get_rke2_version)" = "$REPO_RKE2_VERSION" ]
+  do
+    echo "Waiting for RKE2 to be upgraded..."
+    sleep 5
+  done
+}
 
-  exit 0
+upgrade_os() {
+  CURRENT_OS_VERSION=$(source $HOST_DIR/etc/os-release && echo $PRETTY_NAME)
 
+  if [ "$REPO_OS_PRETTY_NAME" = "$CURRENT_OS_VERSION" ]; then
+    echo "Skip upgrading OS. The version version is already \"$CURRENT_OS_VERSION\"."
+    return
+  fi
+  
   # upgrade OS image and reboot
   mount --rbind $HOST_DIR/dev /dev
   mount --rbind $HOST_DIR/run /run
@@ -372,9 +212,19 @@ command_post_drain() {
   reboot_if_job_succeed
 }
 
-mkdir -p $UPGRADE_TMP_DIR
+command_post_drain() {
+  wait_repo
+  detect_repo
 
-# echo "dry-run" && exit 0
+  # A post-drain signal from Rancher doesn't mean RKE2 agent/server is already patched and restarted
+  # Let's wait until the RKE2 settled.
+  wait_rke2_upgrade
+
+  kubectl taint node $HARVESTER_UPGRADE_NODE_NAME kubevirt.io/drain- || true
+  upgrade_os
+}
+
+mkdir -p $UPGRADE_TMP_DIR
 
 case $1 in
   prepare)
@@ -385,4 +235,5 @@ case $1 in
     ;;
   post-drain)
     command_post_drain
+    ;;
 esac
