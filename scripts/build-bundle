@@ -52,6 +52,19 @@ if [ -n "$HARVESTER_INSTALLER_OFFLINE_BUILD" -a -e /bundle ]; then
  exit 0
 fi
 
+# dev images
+# Need to manually tag some images on the build host because some images are not published yet
+dev_image_list_file="${IMAGES_DIR}/dev.txt"
+dev_image_archive="${IMAGES_DIR}/dev.tar"
+cat > $dev_image_list_file <<EOF
+docker.io/rancher/harvester-upgrade:b9613f9-dirty
+EOF
+
+docker image save -o $dev_image_archive $(<$dev_image_list_file)
+zstd --rm $dev_image_archive -o "${dev_image_archive}.zst"
+add_image_list_to_metadata "common" $BUNDLE_DIR "$dev_image_list_file" "${dev_image_archive}.zst"
+
+
 # Offline images
 
 # Rancherd bootstrap images
