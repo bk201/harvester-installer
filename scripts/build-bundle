@@ -75,6 +75,7 @@ save_image "common" $BUNDLE_DIR $image_list_file ${IMAGES_DIR}
 
 # RKE2 images
 RKE2_IMAGES_URL="https://github.com/rancher/rke2/releases/download/${RKE2_VERSION}"
+RKE2_IMAGES_URL="http://192.168.2.106/harvester/rke2/${RKE2_VERSION}"
 image_list_file="${IMAGES_DIR}/rke2-images.linux-amd64-${RKE2_VERSION_NORMALIZED}.txt"
 image_archive="${IMAGES_DIR}/rke2-images.linux-amd64-${RKE2_VERSION_NORMALIZED}.tar.zst"
 get_url "${RKE2_IMAGES_URL}/rke2-images.linux-amd64.txt" $image_list_file
