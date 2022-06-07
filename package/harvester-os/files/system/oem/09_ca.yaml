@@ -1,0 +1,5 @@
+name: "Update system CA certificates"
+stages:
+  initramfs:
+  - commands:
+    - update-ca-certificates -v
