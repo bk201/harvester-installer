@@ -84,12 +84,7 @@ add_image_list_to_metadata "rke2" $BUNDLE_DIR $image_list_file $image_archive
 
 # exclude SR-IOV images
 image_list_file="${IMAGES_DIR}/rke2-images-multus.linux-amd64-${RKE2_VERSION_NORMALIZED}.txt"
-# save_image_list "rke2-images-multus" "${RKE2_IMAGES_URL}/rke2-images-multus.linux-amd64.txt" ${IMAGES_DIR}/rke2-images-multus.linux-amd64.txt
-# Workaround for https://github.com/rancher/rke2/issues/2229
-cat > $image_list_file <<EOF
-docker.io/rancher/hardened-cni-plugins:v0.9.1-build20211119
-docker.io/rancher/hardened-multus-cni:v3.7.1-build20211119
-EOF
+save_image_list "rke2-images-multus" "${RKE2_IMAGES_URL}/rke2-images-multus.linux-amd64.txt" $image_list_file
 
 save_image "rke2" $BUNDLE_DIR $image_list_file ${IMAGES_DIR}
 
