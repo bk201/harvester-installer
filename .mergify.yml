@@ -2,6 +2,7 @@ pull_request_rules:
     - name: backport patches to stable branch
       conditions:
       - base=test-master
+      - label=backport-v1.1
       actions:
         backport:
           title: "[BACKPORT][{{ destination_branch }}] {{ title }}"
@@ -9,5 +10,7 @@ pull_request_rules:
             This is an automatic backport of pull request #{{number}}.
             
             {{cherry_pick_error}}
+          branches:
+          - test-v1.1
           assignees:
           - "{{ author }}"
