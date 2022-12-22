@@ -10,7 +10,6 @@ Repo for building the [harvester](https://github.com/harvester/harvester) ISO im
 
 Built ISO image is located in the `dist/artifacts` directory.
 
-
 ## License
 Copyright (c) 2023 [Rancher Labs, Inc.](http://rancher.com)
 
