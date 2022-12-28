@@ -101,6 +101,12 @@ check_iso(){
 
 get_iso()
 {
+
+    if [ "$HARVESTER_SKIP_PRELOAD" = "true" ]; then
+      echo "Skip downloading ISO: no need to preload images."
+      return
+    fi
+
     if [ -n "$HARVESTER_ISO_URL" ]; then
         echo "Downloading ISO.."
         ISOMNT=$(mktemp -d -p /tmp cos.XXXXXXXX.isomnt)
@@ -228,6 +234,11 @@ preload_rancherd_images()
 
 do_preload()
 {
+    if [ "$HARVESTER_SKIP_PRELOAD" = "true" ]; then
+      echo "Skip preloading images."
+      return
+    fi
+
     # Bind mount persistent folder to preload images
     BIND_MOUNTS=("var/lib/rancher")
 
