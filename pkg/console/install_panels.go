@@ -1029,11 +1029,7 @@ func addNetworkPanel(c *Console) error {
 		c.config.ManagementInterface = mgmtNetwork
 
 		if mgmtNetwork.Method == config.NetworkMethodDHCP {
-			addr, err := getIPThroughDHCP(config.MgmtInterfaceName)
-			if err != nil {
-				return fmt.Sprintf("Requesting IP through DHCP failed: %s", err.Error()), nil
-			}
-			logrus.Infof("DHCP test passed. Got IP: %s", addr)
+			logrus.Infof("Skip getIPThroughDHCP...")
 			userInputData.Address = ""
 			mgmtNetwork.IP = ""
 			mgmtNetwork.SubnetMask = ""
