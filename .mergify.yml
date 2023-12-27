@@ -1,0 +1,15 @@
+pull_request_rules:
+- name: backport PR to stable branches
+  conditions:
+  - base=master
+  actions:
+    backport:
+      body: |
+        This is an automatic backport of pull request #{{number}}.
+
+        **Related Issue**
+        <--add issue-->
+        
+        {{cherry_pick_error}}
+      assignees:
+      - "{{ author }}"
