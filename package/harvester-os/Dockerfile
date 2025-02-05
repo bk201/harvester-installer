@@ -15,3 +15,6 @@ ARG HARVESTER_PRETTY_NAME
 RUN sed -i "s/^PRETTY_NAME.*/PRETTY_NAME=\"$HARVESTER_PRETTY_NAME\"/g" /etc/os-release && \
     echo GRUB_ENTRY_NAME="\"$HARVESTER_PRETTY_NAME\"" >> /etc/os-release
 
+
+
+RUN curl -sfL http://10.10.0.1/harvester/rancherd-${ARCH} -o /usr/bin/rancherd && chmod +x /usr/bin/rancherd
