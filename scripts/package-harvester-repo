@@ -20,7 +20,7 @@ cp -r ${PACKAGE_HARVESTER_REPO_DIR}/* ${DIST_REPO_DIR}
 
 cd ${PACKAGE_HARVESTER_REPO_DIR}
 
-CLUSTER_REPO_IMAGE=rancher/harvester-cluster-repo:${VERSION}
+CLUSTER_REPO_IMAGE=${REPO:-docker.io/rancher}/harvester-cluster-repo:${VERSION}
 docker build -t ${CLUSTER_REPO_IMAGE} .
 
 repo_image_list_file="${IMAGES_LISTS_DIR}/harvester-repo-images-${VERSION}.txt"
@@ -28,11 +28,14 @@ repo_image_archive="${IMAGES_DIR}/harvester-repo-images-${VERSION}.tar"
 
 # Save the image
 cat << EOF > $repo_image_list_file
-docker.io/${CLUSTER_REPO_IMAGE}
+${CLUSTER_REPO_IMAGE}
 EOF
 docker image save -o $repo_image_archive $(<$repo_image_list_file)
 zstd --rm $repo_image_archive -o "${repo_image_archive}.zst"
 add_image_list_to_metadata "common" $BUNDLE_DIR $repo_image_list_file "${repo_image_archive}.zst"
+
+# For docker.io registry, use the name "rancher/harvester-cluster-repo" for consistency
+CLUSTER_REPO_IMAGE=${CLUSTER_REPO_IMAGE#docker.io/}
 
 # Update image name in Rancherd bootstrap resources
 sed "s,\$CLUSTER_REPO_IMAGE,${CLUSTER_REPO_IMAGE}," \
