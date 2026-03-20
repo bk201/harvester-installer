@@ -17,7 +17,7 @@ replace_image_repo()
 
 replace_harvester_image_repo()
 {
-  replace_image_repo ./deploy/charts/harvester/values.yaml "$1" "${REPO}"
+  replace_image_repo ./deploy/charts/harvester/values.yaml "$1" "$2"
 }
 
 echo "Replace the Harvester chart version to ${CHART_VERSION}"
@@ -33,7 +33,13 @@ yq e -i '.containers.apiserver.image.tag = "'"${IMAGE_PUSH_TAG}"'"' ./deploy/cha
 yq e -i '.webhook.image.tag = "'"${IMAGE_PUSH_TAG}"'"' ./deploy/charts/harvester/values.yaml
 yq e -i '.upgrade.image.tag = "'"${IMAGE_PUSH_TAG}"'"' ./deploy/charts/harvester/values.yaml
 
-echo "Replace the Harvester image repo to ${REPO}"
-replace_harvester_image_repo '.containers.apiserver.image.repository'
-replace_harvester_image_repo '.webhook.image.repository'
-replace_harvester_image_repo '.upgrade.image.repository'
+# Use short form for docker.io repo
+# - rancher -> rancher
+# - docker.io/rancher -> rancher
+# - example.com/harvester -> example.com/harvester 
+repo=${REPO#docker.io/}
+echo "Replace the Harvester image repo to ${repo}"
+
+replace_harvester_image_repo '.containers.apiserver.image.repository' "$repo"
+replace_harvester_image_repo '.webhook.image.repository' "$repo"
+replace_harvester_image_repo '.upgrade.image.repository' "$repo"
