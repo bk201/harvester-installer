@@ -1,6 +1,11 @@
 #!/bin/bash
 
 cd "${1}" || exit
+
+if [ ! -e mk-env.sh ]; then
+  make env
+fi
+
 source mk-env.sh
 
 replace_image_repo()
