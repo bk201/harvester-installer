@@ -1,7 +1,7 @@
 #!/bin/bash
 
 cd "${1}" || exit
-source ./scripts/version
+source mk-env.sh
 
 replace_image_repo()
 {
@@ -17,23 +17,23 @@ replace_image_repo()
 
 replace_harvester_image_repo()
 {
-  replace_image_repo ./deploy/charts/harvester/values.yaml "$1" "${REPO}"
+  replace_image_repo ./deploy/charts/harvester/values.yaml "$1" "${HARVESTER_REPO}"
 }
 
-echo "Replace the Harvester chart version to ${CHART_VERSION}"
-yq e -i '.version = "'"${CHART_VERSION}"'"' ./deploy/charts/harvester/Chart.yaml
-yq e -i '.version = "'"${CHART_VERSION}"'"' ./deploy/charts/harvester-crd/Chart.yaml
+echo "Replace the Harvester chart version to ${HARVESTER_CHART_VERSION}"
+yq e -i '.version = "'"${HARVESTER_CHART_VERSION}"'"' ./deploy/charts/harvester/Chart.yaml
+yq e -i '.version = "'"${HARVESTER_CHART_VERSION}"'"' ./deploy/charts/harvester-crd/Chart.yaml
 
-echo "Replace the Harvester appVersion to ${APP_VERSION}"
-yq e -i '.appVersion = "'"${APP_VERSION}"'"' ./deploy/charts/harvester/Chart.yaml
-yq e -i '.appVersion = "'"${APP_VERSION}"'"' ./deploy/charts/harvester-crd/Chart.yaml
+echo "Replace the Harvester appVersion to ${HARVESTER_APP_VERSION}"
+yq e -i '.appVersion = "'"${HARVESTER_APP_VERSION}"'"' ./deploy/charts/harvester/Chart.yaml
+yq e -i '.appVersion = "'"${HARVESTER_APP_VERSION}"'"' ./deploy/charts/harvester-crd/Chart.yaml
 
-echo "Replace the Harvester image tag to ${IMAGE_PUSH_TAG}"
-yq e -i '.containers.apiserver.image.tag = "'"${IMAGE_PUSH_TAG}"'"' ./deploy/charts/harvester/values.yaml
-yq e -i '.webhook.image.tag = "'"${IMAGE_PUSH_TAG}"'"' ./deploy/charts/harvester/values.yaml
-yq e -i '.upgrade.image.tag = "'"${IMAGE_PUSH_TAG}"'"' ./deploy/charts/harvester/values.yaml
+echo "Replace the Harvester image tag to ${HARVESTER_IMAGE_PUSH_TAG}"
+yq e -i '.containers.apiserver.image.tag = "'"${HARVESTER_IMAGE_PUSH_TAG}"'"' ./deploy/charts/harvester/values.yaml
+yq e -i '.webhook.image.tag = "'"${HARVESTER_IMAGE_PUSH_TAG}"'"' ./deploy/charts/harvester/values.yaml
+yq e -i '.upgrade.image.tag = "'"${HARVESTER_IMAGE_PUSH_TAG}"'"' ./deploy/charts/harvester/values.yaml
 
-echo "Replace the Harvester image repo to ${REPO}"
+echo "Replace the Harvester image repo to ${HARVESTER_REPO}"
 replace_harvester_image_repo '.containers.apiserver.image.repository'
 replace_harvester_image_repo '.webhook.image.repository'
 replace_harvester_image_repo '.upgrade.image.repository'
